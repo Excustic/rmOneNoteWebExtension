@@ -527,3 +527,4 @@ export class OneNoteClient {
     throw new Error('Graph API indexing timeout: Exhausted verification attempts.');
   }
 }
+

@@ -78,3 +78,4 @@ export interface ResolvedOneNoteTarget {
   readonly sectionId: string;
   readonly sectionDisplayName: string;
 }
+

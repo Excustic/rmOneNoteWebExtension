@@ -26,6 +26,15 @@ import {
   reconcileSyncLedgerToDexie,
   registerSyncLedgerAutoReconcile,
 } from '../storage/syncLedger';
+import {
+  cancelSyncItem,
+  registerAutoSyncAlarmListeners,
+  retryFailedPages,
+  runSyncCycle,
+  syncAutoSyncAlarmWithPreferences,
+  type SyncCycleSummary,
+  type SyncCycleTrigger,
+} from '../sync';
 
 const OVERVIEW_STORAGE_KEY = 'syncOverview';
 
@@ -43,6 +52,8 @@ const DEFAULT_PERSISTED_OVERVIEW: PersistedOverviewFields = {
 const VALID_REQUEST_TYPES = new Set<RuntimeRequest['type']>([
   'GET_SYNC_OVERVIEW',
   'TRIGGER_MANUAL_SYNC',
+  'CANCEL_SYNC_ITEM',
+  'RETRY_FAILED_PAGES',
   'SYNC_REMARKABLE_TREE',
   'PAIR_REMARKABLE',
   'DISCONNECT_REMARKABLE',
@@ -95,6 +106,43 @@ async function writePersistedOverview(
   return readSyncOverview();
 }
 
+async function executeManagedSyncCycle(
+  trigger: SyncCycleTrigger,
+  forceTreeRefresh = false,
+): Promise<{ state: SyncOverviewState; summary: SyncCycleSummary }> {
+  await writePersistedOverview({ phase: 'Queued', lastError: null });
+
+  try {
+    const summary = await runSyncCycle({
+      trigger,
+      forceTreeRefresh,
+      onPhaseChange: async (phase, detail) => {
+        await writePersistedOverview({
+          phase,
+          ...(phase === 'Error' && detail ? { lastError: detail } : {}),
+        });
+      },
+    });
+
+    const firstFailure = summary.outcomes.find((item) => item.status === 'Failed');
+    const state = await writePersistedOverview({
+      phase: summary.failedCount > 0 && summary.uploadedCount === 0 ? 'Error' : 'Idle',
+      lastError: firstFailure?.error ?? null,
+      lastSyncedAt: summary.completedAt,
+    });
+
+    return { state, summary };
+  } catch (err) {
+    const errorMessage =
+      err instanceof Error ? err.message : 'Unexpected sync engine failure.';
+    await writePersistedOverview({
+      phase: 'Error',
+      lastError: errorMessage,
+    });
+    throw err;
+  }
+}
+
 function isRuntimeRequest(msg: unknown): msg is RuntimeRequest {
   if (typeof msg !== 'object' || msg === null) {
     return false;
@@ -109,13 +157,21 @@ function isRuntimeRequest(msg: unknown): msg is RuntimeRequest {
 // Register all MV3 event listeners synchronously at top level so restarted
 // service workers / event pages never miss dispatched browser events.
 registerSyncLedgerAutoReconcile();
+registerAutoSyncAlarmListeners(async () => {
+  const auth = await getAuthStatusSummary();
+  if (!auth.isConfigured) {
+    return;
+  }
+  await executeManagedSyncCycle('alarm');
+});
 
 ext.runtime.onInstalled.addListener((details) => {
   void (async () => {
     try {
-      await ensureDefaultPreferences();
+      const prefs = await ensureDefaultPreferences();
       await resetInProgressPages();
       await reconcileSyncLedgerToDexie();
+      await syncAutoSyncAlarmWithPreferences(prefs);
 
       if (details.reason === 'install') {
         await writePersistedOverview(DEFAULT_PERSISTED_OVERVIEW);
@@ -131,6 +187,7 @@ ext.runtime.onStartup.addListener(() => {
     try {
       await resetInProgressPages();
       await reconcileSyncLedgerToDexie();
+      await syncAutoSyncAlarmWithPreferences();
     } catch (err) {
       console.error('[rmOneNote] Startup recovery failed:', err);
     }
@@ -235,26 +292,55 @@ ext.runtime.onMessage.addListener(
               detail: 'Silent token refresh and OneNote Graph API probe succeeded.',
             };
           }
-          case 'TRIGGER_MANUAL_SYNC': {
-            const auth = await getAuthStatusSummary();
-            await reconcileSyncLedgerToDexie();
-
-            let treeSync = undefined;
-            if (auth.remarkablePaired) {
-              await writePersistedOverview({ phase: 'Queued', lastError: null });
-              treeSync = await syncRemarkableCloudTree();
-            }
-            if (auth.microsoftConnected) {
-              await getValidMicrosoftAccessToken();
-            }
-
-            // TODO(Phase 7): Execute WASM conversion and Microsoft Graph upload pipeline for Pending pages.
-            const updated = await writePersistedOverview({
-              phase: 'Idle',
-              lastError: null,
-              lastSyncedAt: new Date().toISOString(),
+          case 'CANCEL_SYNC_ITEM': {
+            await cancelSyncItem(message.documentId, message.pageId);
+            const state = await readSyncOverview();
+            return {
+              ok: true,
+              state,
+              detail: 'Sync item cancelled.',
+            };
+          }
+          case 'RETRY_FAILED_PAGES': {
+            const resetCount = await retryFailedPages({
+              documentId: message.documentId,
+              pageId: message.pageId,
             });
-            return { ok: true, state: updated, treeSync };
+            if (message.runNow && resetCount > 0) {
+              const { state, summary } = await executeManagedSyncCycle('retry');
+              return {
+                ok: true,
+                state,
+                syncSummary: summary,
+                treeSync: summary.treeSync ?? undefined,
+                detail: `Retried ${resetCount} page${resetCount === 1 ? '' : 's'} (${summary.uploadedCount} uploaded).`,
+              };
+            }
+            const state = await readSyncOverview();
+            return {
+              ok: true,
+              state,
+              detail: `Re-queued ${resetCount} page${resetCount === 1 ? '' : 's'} for sync.`,
+            };
+          }
+          case 'TRIGGER_MANUAL_SYNC': {
+            const { state, summary } = await executeManagedSyncCycle(
+              'manual',
+              Boolean(message.forceTreeRefresh),
+            );
+            const detail =
+              summary.processedCount === 0
+                ? 'All whitelisted pages are up to date.'
+                : `Processed ${summary.processedCount} page${
+                    summary.processedCount === 1 ? '' : 's'
+                  }: ${summary.uploadedCount} uploaded, ${summary.failedCount} failed.`;
+            return {
+              ok: true,
+              state,
+              detail,
+              treeSync: summary.treeSync ?? undefined,
+              syncSummary: summary,
+            };
           }
         }
       } catch (err) {

@@ -22,8 +22,10 @@ This project migrates the desktop `rmOneNoteSync` daemon into a pure browser ext
   - Pure native TypeScript port of `rmscene` + `rmc` (`inmkl.py`): decodes `.rm` v6 CRDT `SceneTree` blocks, Type Folio `RootTextBlock` formatting, 64-bit paragraph anchors, OS 3.6+ dynamic RGBA highlight/shader strokes, and legacy `.rm` v3/v5 strokes directly in memory into OneNote-compatible `application/inkml+xml` and `text/html` payloads (`convertRmPage`, `downloadAndConvertRmPage`) without WebAssembly or Python runtime overhead.
 - **Microsoft Graph OneNote Client (`src/onenote/`):**
   - Native TypeScript client (`OneNoteClient`) with RFC 7578 binary `multipart/form-data` payload framing (`presentation` HTML + `presentation-onenote-inkml` XML), `AsyncSemaphore` concurrency limiting (max 3 concurrent Graph requests), `Retry-After` and jittered exponential backoff on HTTP `429`/`500`/`503`/`504`, Phantom Link verification polling (`getPageWithPhantomLinkVerification`), and `KeyedMutex`-protected `OneNoteDirectoryCache` backed by `Dexie.notebooks`.
-- **Planned Modules (Phases 7-8):**
-  - Autonomous `browser.alarms` background sync loop (`src/sync/`) and full status/dashboard UI polish.
+- **Autonomous Sync Engine (`src/sync/`):**
+  - `runSyncCycle` drives the full pipeline (ledger reconcile -> Sync15 tree diff -> `.rm` download -> InkML/HTML conversion -> OneNote create-or-update -> Phantom Link verification -> rolling ledger). Triggered manually from the UI or periodically by `browser.alarms`; only one cycle runs at a time.
+- **Planned Modules (Phase 8):**
+  - Full dashboard/status UI polish, OSS documentation, and CI/CD workflows.
 
 ## Prerequisites
 

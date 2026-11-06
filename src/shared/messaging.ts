@@ -1,4 +1,5 @@
 import type { CloudTreeSyncResult } from '../remarkable/types';
+import type { SyncCycleSummary } from '../sync/types';
 
 export type SyncPhase =
   | 'Idle'
@@ -36,7 +37,9 @@ export const DEFAULT_SYNC_OVERVIEW: SyncOverviewState = {
 
 export type RuntimeRequest =
   | { type: 'GET_SYNC_OVERVIEW' }
-  | { type: 'TRIGGER_MANUAL_SYNC' }
+  | { type: 'TRIGGER_MANUAL_SYNC'; forceTreeRefresh?: boolean }
+  | { type: 'CANCEL_SYNC_ITEM'; documentId: string; pageId: string }
+  | { type: 'RETRY_FAILED_PAGES'; documentId?: string; pageId?: string; runNow?: boolean }
   | { type: 'SYNC_REMARKABLE_TREE'; forceRefresh?: boolean }
   | { type: 'PAIR_REMARKABLE'; code: string }
   | { type: 'DISCONNECT_REMARKABLE' }
@@ -51,5 +54,6 @@ export type RuntimeResponse =
       state: SyncOverviewState;
       detail?: string;
       treeSync?: CloudTreeSyncResult;
+      syncSummary?: SyncCycleSummary;
     }
   | { ok: false; error: string };

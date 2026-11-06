@@ -152,6 +152,17 @@ function createStorageArea(areaName: 'sync' | 'local', enforceSyncQuotas: boolea
 const syncArea = createStorageArea('sync', true);
 const localArea = createStorageArea('local', false);
 
+type AlarmRecord = {
+  name: string;
+  scheduledTime: number;
+  periodInMinutes?: number;
+};
+
+type AlarmListener = (alarm: AlarmRecord) => void;
+
+const alarmStore = new Map<string, AlarmRecord>();
+const alarmListeners = new Set<AlarmListener>();
+
 const mockBrowser = {
   runtime: {
     id: 'rm-onenote-sync@excustic.dev',
@@ -169,6 +180,39 @@ const mockBrowser = {
     onMessage: {
       addListener: () => undefined,
       removeListener: () => undefined,
+    },
+  },
+  alarms: {
+    create: (name: string, alarmInfo: { delayInMinutes?: number; periodInMinutes?: number }) => {
+      const delayMs = (alarmInfo.delayInMinutes ?? alarmInfo.periodInMinutes ?? 1) * 60_000;
+      alarmStore.set(name, {
+        name,
+        scheduledTime: Date.now() + delayMs,
+        periodInMinutes: alarmInfo.periodInMinutes,
+      });
+    },
+    clear: async (name?: string) => {
+      if (!name) {
+        const had = alarmStore.size > 0;
+        alarmStore.clear();
+        return had;
+      }
+      return alarmStore.delete(name);
+    },
+    get: async (name?: string) => {
+      if (!name) {
+        return undefined;
+      }
+      return alarmStore.get(name);
+    },
+    getAll: async () => Array.from(alarmStore.values()),
+    onAlarm: {
+      addListener: (fn: AlarmListener) => {
+        alarmListeners.add(fn);
+      },
+      removeListener: (fn: AlarmListener) => {
+        alarmListeners.delete(fn);
+      },
     },
   },
   tabs: {
@@ -210,6 +254,15 @@ export function resetMockBrowserStorage(): void {
   syncArea._rawStore.clear();
   localArea._rawStore.clear();
   changeListeners.clear();
+  alarmStore.clear();
+  alarmListeners.clear();
+}
+
+export function triggerMockAlarm(name: string): void {
+  const alarm = alarmStore.get(name) ?? { name, scheduledTime: Date.now() };
+  for (const listener of Array.from(alarmListeners)) {
+    listener(alarm);
+  }
 }
 
 export function resetMockLocalStorageOnly(): void {
