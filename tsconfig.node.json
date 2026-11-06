@@ -17,6 +17,6 @@
     "noUncheckedSideEffectImports": true,
     "types": ["node", "chrome"]
   },
-  "include": ["vite.config.ts", "src/manifest.ts"]
+  "include": ["vite.config.ts", "vitest.config.ts", "src/manifest.ts"]
 }
 

@@ -95,7 +95,23 @@ export function PopupApp() {
         </button>
       </header>
 
-      <main className="flex flex-1 flex-col p-4">
+      <main className="flex flex-1 flex-col gap-3 p-4">
+        {overview.needsBackupImport ? (
+          <div
+            role="status"
+            className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-950"
+          >
+            <p className="font-semibold">Missing older sync history ({overview.missingHistoryCount})</p>
+            <button
+              type="button"
+              onClick={() => void handleOpenRoute('settings')}
+              className="mt-1 font-medium text-amber-900 underline underline-offset-2 hover:text-amber-950"
+            >
+              Import backup from previous PC
+            </button>
+          </div>
+        ) : null}
+
         {!isLoaded ? (
           <div className="flex flex-1 items-center justify-center py-8 text-xs text-slate-500">
             Reading sync status...
@@ -132,4 +148,3 @@ export function PopupApp() {
     </div>
   );
 }
-

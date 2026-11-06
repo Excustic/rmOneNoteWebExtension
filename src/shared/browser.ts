@@ -1,15 +1,9 @@
-/**
- * Cross-browser WebExtension namespace resolver.
- *
- * Chrome, Edge, Opera, and Firefox 115+ (MV3) all expose Promise-based APIs on
- * `chrome.*`, while Firefox also exposes `browser.*`. Resolving `browser ?? chrome`
- * avoids pulling in external polyfill dependencies for standard MV3 APIs.
- */
-declare global {
-  var browser: typeof chrome | undefined;
-}
+import browser, { type Browser } from 'webextension-polyfill';
 
-export const ext: typeof chrome = globalThis.browser ?? globalThis.chrome;
+/**
+ * Standardized Promise-based WebExtension namespace across Chrome, Edge, Firefox, and Opera.
+ */
+export const ext: Browser = browser;
 
 /**
  * Opens the extension Options page at a specific hash route in a new browser tab.
@@ -20,4 +14,3 @@ export async function openOptionsAtRoute(hashRoute: string): Promise<void> {
   const url = ext.runtime.getURL(`options.html#${normalized}`);
   await ext.tabs.create({ url });
 }
-

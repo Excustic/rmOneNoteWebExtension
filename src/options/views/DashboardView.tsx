@@ -4,9 +4,14 @@ import type { OptionsRouteId } from '../../shared/routes';
 interface DashboardViewProps {
   overview: SyncOverviewState;
   onNavigate: (route: OptionsRouteId) => void;
+  onDismissBackupWarning: () => void;
 }
 
-export function DashboardView({ overview, onNavigate }: DashboardViewProps) {
+export function DashboardView({
+  overview,
+  onNavigate,
+  onDismissBackupWarning,
+}: DashboardViewProps) {
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -27,6 +32,38 @@ export function DashboardView({ overview, onNavigate }: DashboardViewProps) {
           {overview.isConfigured ? 'Inspect Sync Queue' : 'Configure Accounts'}
         </button>
       </header>
+
+      {overview.needsBackupImport ? (
+        <div
+          role="status"
+          className="rounded-xl border border-amber-300 bg-amber-50 p-5 text-amber-950"
+        >
+          <h2 className="text-sm font-semibold">Older Sync History Omitted from Browser Sync</h2>
+          <p className="mt-1 text-sm leading-relaxed text-amber-900">
+            {overview.missingHistoryCount} older synced page record
+            {overview.missingHistoryCount === 1 ? ' was' : 's were'} omitted from cross-browser sync
+            storage due to extension quota limits. Before syncing on this PC, export a database
+            backup file from your previous browser and import it in Settings to avoid re-uploading
+            older pages.
+          </p>
+          <div className="mt-3.5 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => onNavigate('settings')}
+              className="min-h-9 rounded-md bg-amber-900 px-3.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-950"
+            >
+              Import Backup in Settings
+            </button>
+            <button
+              type="button"
+              onClick={onDismissBackupWarning}
+              className="min-h-9 rounded-md border border-amber-400 bg-white px-3.5 py-1.5 text-xs font-medium text-amber-900 transition-colors hover:bg-amber-100"
+            >
+              Dismiss Warning
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs">
@@ -55,13 +92,12 @@ export function DashboardView({ overview, onNavigate }: DashboardViewProps) {
           <h2 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
             Indexed Pages
           </h2>
-          <p className="mt-2 text-xl font-semibold text-slate-900">0</p>
+          <p className="mt-2 text-xl font-semibold text-slate-900">{overview.indexedPagesCount}</p>
           <p className="mt-1 text-xs text-slate-500">
-            Dexie.js IndexedDB tables initialize in Phase 2.
+            Stored locally in IndexedDB and synced via rolling ledger.
           </p>
         </article>
       </div>
     </div>
   );
 }
-
