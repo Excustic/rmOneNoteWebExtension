@@ -299,3 +299,4 @@ export function getBoundingBox(
 
   return { xMin, xMax, yMin, yMax };
 }
+
