@@ -20,8 +20,10 @@ This project migrates the desktop `rmOneNoteSync` daemon into a pure browser ext
   - Native read-only Sync15 protocol client (`/sync/v4/root` and `/sync/v3/files/<hash>` with `rm-filename` headers), incremental SHA-256 tree & page delta indexing into IndexedDB, tri-state folder/notebook whitelisting (`FileBrowserView.tsx`), and direct in-memory `Uint8Array` `.rm` page retrieval (`downloadPageRmBytes`).
 - **InkML & HTML Converter (`src/converter/`):**
   - Pure native TypeScript port of `rmscene` + `rmc` (`inmkl.py`): decodes `.rm` v6 CRDT `SceneTree` blocks, Type Folio `RootTextBlock` formatting, 64-bit paragraph anchors, OS 3.6+ dynamic RGBA highlight/shader strokes, and legacy `.rm` v3/v5 strokes directly in memory into OneNote-compatible `application/inkml+xml` and `text/html` payloads (`convertRmPage`, `downloadAndConvertRmPage`) without WebAssembly or Python runtime overhead.
-- **Planned Modules (Phases 6-8):**
-  - Microsoft Graph OneNote multipart upload with throttling/backoff, autonomous `alarms` background sync loop, and full status/dashboard UI polish.
+- **Microsoft Graph OneNote Client (`src/onenote/`):**
+  - Native TypeScript client (`OneNoteClient`) with RFC 7578 binary `multipart/form-data` payload framing (`presentation` HTML + `presentation-onenote-inkml` XML), `AsyncSemaphore` concurrency limiting (max 3 concurrent Graph requests), `Retry-After` and jittered exponential backoff on HTTP `429`/`500`/`503`/`504`, Phantom Link verification polling (`getPageWithPhantomLinkVerification`), and `KeyedMutex`-protected `OneNoteDirectoryCache` backed by `Dexie.notebooks`.
+- **Planned Modules (Phases 7-8):**
+  - Autonomous `browser.alarms` background sync loop (`src/sync/`) and full status/dashboard UI polish.
 
 ## Prerequisites
 
