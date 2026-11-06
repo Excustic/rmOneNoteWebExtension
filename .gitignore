@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+*.crx
+*.xpi
+*.zip
+*.pem
+
+# Vite & CRXJS caches
+.vite/
+
+# Logs & OS files
+*.log
+.DS_Store
+Thumbs.db
+
+# Editor directories (keep .vscode recommendations if added later)
+.idea/
+*.swp
+*.swo
+
+# Local environment secrets
+.env
+.env.*
+!.env.example

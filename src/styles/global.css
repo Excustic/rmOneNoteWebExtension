@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+@theme {
+  --color-sidebar: #1a1d2e;
+  --color-sidebar-border: #2a2d3e;
+  --color-sidebar-hover: #252940;
+  --color-sidebar-active: #3a3d4e;
+  --color-brand: #2563eb;
+  --color-brand-hover: #1d4ed8;
+}
+
+.popup-surface {
+  width: 380px;
+  min-height: 260px;
+}
+
+/* Accessible visually-hidden utility; opts out when focused so skip links appear cleanly. */
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+:where(a:any-link, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+.sidebar-region :where(a:any-link, button):focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
