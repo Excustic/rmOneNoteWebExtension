@@ -18,3 +18,4 @@ export class RmOneNoteDatabase extends Dexie {
 }
 
 export const db = new RmOneNoteDatabase();
+

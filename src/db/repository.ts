@@ -252,3 +252,4 @@ export async function resetDatabase(database: RmOneNoteDatabase = db): Promise<v
   await database.delete();
   await database.open();
 }
+

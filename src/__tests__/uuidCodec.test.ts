@@ -124,3 +124,4 @@ describe('uuidCodec', () => {
     ).toThrow();
   });
 });
+

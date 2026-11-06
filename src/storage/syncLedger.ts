@@ -352,3 +352,4 @@ export function registerSyncLedgerAutoReconcile(database: RmOneNoteDatabase = db
     ext.storage.onChanged.removeListener(listener);
   };
 }
+

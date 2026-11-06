@@ -209,3 +209,4 @@ export function resetMockLocalStorageOnly(): void {
 export function getRawSyncStoreSnapshot(): Map<string, unknown> {
   return new Map(syncArea._rawStore);
 }
+

@@ -130,3 +130,4 @@ export function deriveOneNoteNotebookName(virtualPath: string, fallbackName = ''
   const folderSegments = parts.slice(0, -2).map(sanitizeOneNoteName);
   return `rm_${folderSegments.join('_')}`;
 }
+

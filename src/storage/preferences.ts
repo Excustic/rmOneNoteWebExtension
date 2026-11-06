@@ -210,3 +210,4 @@ export function onSyncStorageChanged(
     ext.storage.onChanged.removeListener(handler);
   };
 }
+
