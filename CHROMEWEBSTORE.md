@@ -104,7 +104,7 @@ https://github.com/Excustic/rmOneNoteWebExtension
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 0.1.0 | 2026-11-06 | Phase 1 MV3 cross-browser scaffold, popup and options routing architecture | Draft |
+| 0.1.0 | 2026-11-06 | Phases 1-3 MV3 cross-browser scaffold, IndexedDB + rolling sync ledger, reMarkable OTP pairing, and Microsoft PKCE authentication | Draft |
 
 ## Review Notes
 

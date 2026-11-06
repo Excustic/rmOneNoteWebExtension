@@ -34,6 +34,20 @@ export function OptionsApp() {
 
   useEffect(() => {
     void refreshOverview();
+
+    const onStorageChange = (changes: Record<string, unknown>, areaName: string) => {
+      if (
+        areaName === 'local' &&
+        ('rmAuth' in changes || 'msAuth' in changes || 'syncOverview' in changes)
+      ) {
+        void refreshOverview();
+      }
+    };
+
+    ext.storage.onChanged.addListener(onStorageChange);
+    return () => {
+      ext.storage.onChanged.removeListener(onStorageChange);
+    };
   }, [refreshOverview]);
 
   const handleDismissBackupWarning = useCallback(async () => {
@@ -44,7 +58,19 @@ export function OptionsApp() {
   function renderActiveView() {
     switch (route) {
       case 'setup':
-        return <SetupView onCancel={() => navigate('dashboard')} />;
+        return (
+          <SetupView
+            overview={overview}
+            onAuthStateChanged={(next) => {
+              if (next) {
+                setOverview(next);
+              } else {
+                void refreshOverview();
+              }
+            }}
+            onFinish={() => navigate('dashboard')}
+          />
+        );
       case 'files':
         return <FileBrowserView />;
       case 'sync-status':

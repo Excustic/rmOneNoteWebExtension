@@ -174,6 +174,11 @@ const mockBrowser = {
   tabs: {
     create: async () => ({}),
   },
+  identity: {
+    getRedirectURL: (path?: string) =>
+      `https://testextensionid.chromiumapp.org/${(path ?? '').replace(/^\//, '')}`,
+    launchWebAuthFlow: async () => 'https://testextensionid.chromiumapp.org/',
+  },
   storage: {
     sync: syncArea,
     local: localArea,

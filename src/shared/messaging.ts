@@ -8,6 +8,9 @@ export type SyncPhase =
 
 export interface SyncOverviewState {
   isConfigured: boolean;
+  remarkablePaired: boolean;
+  microsoftConnected: boolean;
+  microsoftAccount: string | null;
   phase: SyncPhase;
   lastSyncedAt: string | null;
   lastError: string | null;
@@ -18,6 +21,9 @@ export interface SyncOverviewState {
 
 export const DEFAULT_SYNC_OVERVIEW: SyncOverviewState = {
   isConfigured: false,
+  remarkablePaired: false,
+  microsoftConnected: false,
+  microsoftAccount: null,
   phase: 'Idle',
   lastSyncedAt: null,
   lastError: null,
@@ -28,8 +34,14 @@ export const DEFAULT_SYNC_OVERVIEW: SyncOverviewState = {
 
 export type RuntimeRequest =
   | { type: 'GET_SYNC_OVERVIEW' }
-  | { type: 'TRIGGER_MANUAL_SYNC' };
+  | { type: 'TRIGGER_MANUAL_SYNC' }
+  | { type: 'PAIR_REMARKABLE'; code: string }
+  | { type: 'DISCONNECT_REMARKABLE' }
+  | { type: 'VERIFY_REMARKABLE_SESSION' }
+  | { type: 'SIGN_IN_MICROSOFT'; clientId?: string; tenantId?: string }
+  | { type: 'SIGN_OUT_MICROSOFT' }
+  | { type: 'VERIFY_MICROSOFT_SESSION' };
 
 export type RuntimeResponse =
-  | { ok: true; state: SyncOverviewState }
+  | { ok: true; state: SyncOverviewState; detail?: string }
   | { ok: false; error: string };
