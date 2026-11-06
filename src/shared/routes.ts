@@ -2,7 +2,6 @@ export type OptionsRouteId =
   | 'dashboard'
   | 'files'
   | 'sync-status'
-  | 'logs'
   | 'settings'
   | 'setup';
 
@@ -37,13 +36,6 @@ export const OPTIONS_ROUTES: readonly OptionsRouteDefinition[] = [
     showInSidebar: true,
   },
   {
-    id: 'logs',
-    label: 'Logs',
-    pageTitle: 'Diagnostic Logs | reMarkable OneNote Sync',
-    iconPlaceholderName: 'Logs',
-    showInSidebar: true,
-  },
-  {
     id: 'settings',
     label: 'Settings',
     pageTitle: 'Settings | reMarkable OneNote Sync',
@@ -75,4 +67,3 @@ export function getRouteDefinition(id: OptionsRouteId): OptionsRouteDefinition {
   const match = OPTIONS_ROUTES.find((route) => route.id === id);
   return match ?? OPTIONS_ROUTES[0];
 }
-

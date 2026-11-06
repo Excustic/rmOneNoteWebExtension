@@ -8,11 +8,13 @@ This project migrates the desktop `rmOneNoteSync` daemon into a pure browser ext
 
 - **UI Layer:** React 19, TypeScript, and Tailwind CSS v4.
   - `popup.html` (`src/popup/`): Quick status summary, manual sync trigger, and account setup redirect.
-  - `options.html` (`src/options/`): Full-tab management interface with hash-based routing (`#dashboard`, `#files`, `#sync-status`, `#logs`, `#settings`, `#setup`).
-- **Background Engine:** Ephemeral-safe Manifest V3 background worker (`src/background/index.ts`), compiled as a Service Worker for Chromium (`Chrome`, `Edge`, `Opera`) and as an Event Page for Firefox MV3.
-- **Planned Modules (Phases 2-7):**
-  - `Dexie.js` (IndexedDB) for local sync delta tracking and `chrome.storage.sync` for user preferences.
-  - reMarkable Cloud OTP pairing and Microsoft Graph PKCE authentication via `chrome.identity`.
+  - `options.html` (`src/options/`): Full-tab management interface with hash-based routing (`#dashboard`, `#files`, `#sync-status`, `#settings`, `#setup`).
+- **Background Engine:** Ephemeral-safe Manifest V3 background worker (`src/background/index.ts`), compiled as a Service Worker for Chromium (`Chrome`, `Edge`, `Opera`) and as an Event Page for Firefox MV3 via `webextension-polyfill`.
+- **Storage & State Layer (`src/db/`, `src/storage/`):**
+  - `Dexie.js` (IndexedDB) for local document tree, per-page sync deltas, OneNote notebook/section caching, and portable `.json` database backup/restore.
+  - `browser.storage.sync` with 1-to-1 Base64url UUID packing for folder/file whitelists, user preferences, and a 1,280-page cross-PC rolling sync ledger with eviction detection.
+- **Planned Modules (Phases 3-7):**
+  - reMarkable Cloud OTP pairing and Microsoft Graph PKCE authentication via `browser.identity`.
   - In-memory `.rm` archive extraction (`JSZip`) and Rust `rmc` WebAssembly (`WASM`) InkML/HTML conversion.
 
 ## Prerequisites
@@ -44,10 +46,11 @@ Build production unpacked bundles (`dist/chromium` and `dist/firefox`):
 pnpm run build
 ```
 
-Run strict TypeScript verification:
+Run strict TypeScript verification and unit tests:
 
 ```bash
 pnpm run typecheck
+pnpm test
 ```
 
 ## Loading Production Builds Manually

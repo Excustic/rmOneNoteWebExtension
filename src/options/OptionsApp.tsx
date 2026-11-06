@@ -1,15 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ext } from '../shared/browser';
 import {
   DEFAULT_SYNC_OVERVIEW,
   type RuntimeResponse,
   type SyncOverviewState,
 } from '../shared/messaging';
+import { dismissBackupImportWarning } from '../storage/syncLedger';
 import { Sidebar } from './components/Sidebar';
 import { useHashRoute } from './hooks/useHashRoute';
 import { DashboardView } from './views/DashboardView';
 import { FileBrowserView } from './views/FileBrowserView';
-import { LogsView } from './views/LogsView';
 import { SettingsView } from './views/SettingsView';
 import { SetupView } from './views/SetupView';
 import { SyncStatusView } from './views/SyncStatusView';
@@ -18,29 +18,28 @@ export function OptionsApp() {
   const { route, navigate } = useHashRoute();
   const [overview, setOverview] = useState<SyncOverviewState>(DEFAULT_SYNC_OVERVIEW);
 
-  useEffect(() => {
-    let active = true;
+  const refreshOverview = useCallback(async () => {
+    try {
+      const response = (await ext.runtime.sendMessage({
+        type: 'GET_SYNC_OVERVIEW',
+      })) as RuntimeResponse | undefined;
 
-    async function loadOverview() {
-      try {
-        const response = (await ext.runtime.sendMessage({
-          type: 'GET_SYNC_OVERVIEW',
-        })) as RuntimeResponse | undefined;
-
-        if (active && response?.ok) {
-          setOverview(response.state);
-        }
-      } catch (err) {
-        console.error('[rmOneNote] Failed to load sync overview in options:', err);
+      if (response?.ok) {
+        setOverview(response.state);
       }
+    } catch (err) {
+      console.error('[rmOneNote] Failed to load sync overview in options:', err);
     }
-
-    void loadOverview();
-
-    return () => {
-      active = false;
-    };
   }, []);
+
+  useEffect(() => {
+    void refreshOverview();
+  }, [refreshOverview]);
+
+  const handleDismissBackupWarning = useCallback(async () => {
+    await dismissBackupImportWarning();
+    await refreshOverview();
+  }, [refreshOverview]);
 
   function renderActiveView() {
     switch (route) {
@@ -50,16 +49,21 @@ export function OptionsApp() {
         return <FileBrowserView />;
       case 'sync-status':
         return <SyncStatusView overview={overview} />;
-      case 'logs':
-        return <LogsView />;
       case 'settings':
-        return <SettingsView onOpenSetup={() => navigate('setup')} />;
+        return (
+          <SettingsView
+            overview={overview}
+            onOpenSetup={() => navigate('setup')}
+            onBackupStateChanged={() => void refreshOverview()}
+          />
+        );
       case 'dashboard':
       default:
         return (
           <DashboardView
             overview={overview}
             onNavigate={navigate}
+            onDismissBackupWarning={() => void handleDismissBackupWarning()}
           />
         );
     }
@@ -82,4 +86,3 @@ export function OptionsApp() {
     </div>
   );
 }
-

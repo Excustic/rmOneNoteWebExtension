@@ -15,7 +15,7 @@ Keep your handwritten reMarkable notebooks backed up and searchable inside Micro
 
 Connect your reMarkable account and your Microsoft account once, choose which folders you want to sync, and your updated pages transfer automatically on your chosen schedule.
 Preserve editable vector ink and clean page layouts directly inside your OneNote sections.
-Check sync progress at any time from the toolbar popup or inspect page-level history and logs in the full dashboard tab.
+Check sync progress at any time from the toolbar popup or inspect page-level sync history in the full dashboard tab.
 
 How to get started:
 1. Open the extension popup and select Complete Setup.
@@ -54,7 +54,7 @@ English
 
 | Permission | Type | Justification |
 |------------|------|---------------|
-| `storage` | permissions | Stores user sync preferences (`chrome.storage.sync`) and persists authentication tokens and background sync status locally (`chrome.storage.local`). |
+| `storage` | permissions | Stores user sync preferences, folder whitelists, and recent page sync ledger across devices (`storage.sync`), and persists authentication tokens and background sync status locally (`storage.local`). |
 | `alarms` | permissions | Triggers periodic background synchronization checks at the user-configured interval without keeping the service worker permanently awake. |
 | `identity` | permissions | Executes Microsoft OAuth 2.0 PKCE sign-in via `chrome.identity.launchWebAuthFlow` so users can authorize OneNote notebook uploads. |
 | `https://webapp-prod.cloud.remarkable.com/*` | host_permissions | Exchanges the user's one-time pairing code for a reMarkable device token and refreshes short-lived session tokens. |

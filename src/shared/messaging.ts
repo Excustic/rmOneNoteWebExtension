@@ -11,6 +11,9 @@ export interface SyncOverviewState {
   phase: SyncPhase;
   lastSyncedAt: string | null;
   lastError: string | null;
+  indexedPagesCount: number;
+  needsBackupImport: boolean;
+  missingHistoryCount: number;
 }
 
 export const DEFAULT_SYNC_OVERVIEW: SyncOverviewState = {
@@ -18,6 +21,9 @@ export const DEFAULT_SYNC_OVERVIEW: SyncOverviewState = {
   phase: 'Idle',
   lastSyncedAt: null,
   lastError: null,
+  indexedPagesCount: 0,
+  needsBackupImport: false,
+  missingHistoryCount: 0,
 };
 
 export type RuntimeRequest =
@@ -27,4 +33,3 @@ export type RuntimeRequest =
 export type RuntimeResponse =
   | { ok: true; state: SyncOverviewState }
   | { ok: false; error: string };
-
