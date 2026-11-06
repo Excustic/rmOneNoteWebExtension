@@ -9,6 +9,88 @@
   --color-brand-hover: #1d4ed8;
 }
 
+:root {
+  --icon-check: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'></polyline></svg>");
+  --icon-dash: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='4.5' stroke-linecap='round' stroke-linejoin='round'><line x1='5' y1='12' x2='19' y2='12'></line></svg>");
+}
+
+/* Custom tri-state checkbox preserving native <input type="checkbox"> semantics. */
+.checkbox-custom {
+  --checkbox-size: 1.15em;
+  --checkbox-icon-size: 0.72em;
+
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  inline-size: var(--checkbox-size);
+  aspect-ratio: 1;
+  margin: 0;
+  border-radius: 0.25rem;
+  border: 2px solid #94a3b8;
+  background-color: #ffffff;
+  color: #ffffff;
+  cursor: pointer;
+  flex-shrink: 0;
+
+  @media (forced-colors: active) {
+    background-color: Canvas;
+    border-color: ButtonText;
+  }
+
+  &::before {
+    content: "";
+    inline-size: var(--checkbox-icon-size);
+    aspect-ratio: 1;
+    background-color: currentColor;
+    mask: var(--checkbox-icon) no-repeat center / contain;
+    scale: 0;
+
+    @media (prefers-reduced-motion: no-preference) {
+      transition: scale 150ms ease;
+    }
+
+    @media (forced-colors: active) {
+      background-color: CanvasText;
+    }
+  }
+
+  &:checked {
+    --checkbox-icon: var(--icon-check);
+    border-color: var(--color-brand);
+    background-color: var(--color-brand);
+
+    @media (forced-colors: active) {
+      background-color: Canvas;
+      border-color: Highlight;
+    }
+  }
+
+  &:indeterminate {
+    --checkbox-icon: var(--icon-dash);
+    border-color: var(--color-brand);
+    background-color: var(--color-brand);
+
+    @media (forced-colors: active) {
+      background-color: Canvas;
+      border-color: Highlight;
+    }
+  }
+
+  &:is(:checked, :indeterminate)::before {
+    scale: 1;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
 .popup-surface {
   width: 380px;
   min-height: 260px;

@@ -4,9 +4,6 @@
  * - Chromium targets (Chrome, Edge, Opera) use `background.service_worker`.
  * - Firefox MV3 uses event pages (`background.scripts`) and requires `browser_specific_settings.gecko`
  *   for `chrome.storage.sync` and `chrome.identity` redirect resolution.
- *
- * NOTE: `icons` and `action.default_icon` are intentionally omitted until curated
- * 16x16, 48x48, and 128x128 PNG assets are added to `public/icons/`.
  */
 export function buildManifest(targetBrowser: 'chrome' | 'firefox'): Record<string, unknown> {
   const isFirefox = targetBrowser === 'firefox';
@@ -18,9 +15,19 @@ export function buildManifest(targetBrowser: 'chrome' | 'firefox'): Record<strin
     version: '0.1.0',
     description:
       'Autonomous serverless sync between reMarkable Cloud notebooks and Microsoft OneNote.',
+    icons: {
+      '16': 'icons/icon-16.png',
+      '48': 'icons/icon-48.png',
+      '128': 'icons/icon-128.png',
+    },
     action: {
       default_title: 'reMarkable to OneNote Sync',
       default_popup: 'popup.html',
+      default_icon: {
+        '16': 'icons/icon-16.png',
+        '48': 'icons/icon-48.png',
+        '128': 'icons/icon-128.png',
+      },
     },
     options_ui: {
       page: 'options.html',

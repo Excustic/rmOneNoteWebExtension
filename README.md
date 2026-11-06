@@ -16,8 +16,10 @@ This project migrates the desktop `rmOneNoteSync` daemon into a pure browser ext
 - **Authentication Layer (`src/auth/`):**
   - reMarkable Cloud 8-character OTP device pairing (`/token/json/2/device/new`), JWT `exp`-aware session token caching (`/token/json/2/user/new`), and transparent HTTP 401 refresh-and-retry interceptor.
   - Microsoft Entra ID OAuth 2.0 Authorization Code + S256 PKCE via `browser.identity.launchWebAuthFlow`, refresh token persistence in `browser.storage.local`, and silent HTTP 401 Graph API interceptor.
-- **Planned Modules (Phases 4-7):**
-  - In-memory `.rm` archive extraction (`JSZip`) and Rust `rmc` WebAssembly (`WASM`) InkML/HTML conversion.
+- **reMarkable Sync15 Client (`src/remarkable/`):**
+  - Native read-only Sync15 protocol client (`/sync/v4/root` and `/sync/v3/files/<hash>` with `rm-filename` headers), incremental SHA-256 tree & page delta indexing into IndexedDB, tri-state folder/notebook whitelisting (`FileBrowserView.tsx`), and direct in-memory `Uint8Array` `.rm` page retrieval (`downloadPageRmBytes`).
+- **Planned Modules (Phases 5-7):**
+  - Rust `rmc` WebAssembly (`WASM`) `.rm` -> InkML XML + Presentation HTML conversion, Microsoft Graph OneNote multipart upload with throttling/backoff, and autonomous `alarms` background sync loop.
 
 ## Prerequisites
 
