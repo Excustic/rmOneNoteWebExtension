@@ -39,7 +39,7 @@ English
 
 | Asset | Dimensions | Status | Filename |
 |-------|-----------|--------|----------|
-| Store Icon [REQUIRED] | 128x128 PNG | Not created | `public/icons/icon-128.png` |
+| Store Icon [REQUIRED] | 128x128 PNG | Created | `public/icons/icon-128.png` |
 | Screenshot 1 [REQUIRED] | 1280x800 or 640x400 | Not created | |
 | Screenshot 2 [RECOMMENDED] | 1280x800 or 640x400 | Not created | |
 | Screenshot 3 [RECOMMENDED] | 1280x800 or 640x400 | Not created | |
@@ -109,6 +109,6 @@ https://github.com/Excustic/rmOneNoteWebExtension
 ## Review Notes
 
 ### Known Issues / Limitations
-- Curated extension icons (`16x16`, `48x48`, `128x128`) are omitted from `manifest.ts` during Phase 1 and must be added before store submission.
-- After Chrome Web Store publication, update the Microsoft Entra OAuth redirect URI to include the store-assigned extension ID (or pin a public `key` in `manifest.ts`).
+- Screenshots (`1280x800` or `640x400`) and Small Promo Tile (`440x280`) will be captured in Phase 8 once all UI views are finalized.
+- After Chrome Web Store publication, register the store-assigned `https://<extension-id>.chromiumapp.org/` redirect URI in the Microsoft Entra App Registration.
 

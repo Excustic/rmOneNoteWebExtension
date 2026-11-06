@@ -72,7 +72,19 @@ export function OptionsApp() {
           />
         );
       case 'files':
-        return <FileBrowserView />;
+        return (
+          <FileBrowserView
+            overview={overview}
+            onOpenSetup={() => navigate('setup')}
+            onSyncStateChanged={(next) => {
+              if (next) {
+                setOverview(next);
+              } else {
+                void refreshOverview();
+              }
+            }}
+          />
+        );
       case 'sync-status':
         return <SyncStatusView overview={overview} />;
       case 'settings':

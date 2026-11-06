@@ -79,8 +79,13 @@ export function PopupApp() {
     <div className="flex min-h-[260px] flex-col bg-slate-50 text-slate-900">
       <header className="sidebar-region flex items-center justify-between border-b border-sidebar-border bg-sidebar px-4 py-3 text-white">
         <div className="flex items-center gap-3">
-          {/* Icon placeholder: Brand Logo (28x28) */}
-          <div className="h-7 w-7 shrink-0 rounded bg-sidebar-active" aria-hidden="true" />
+          <img
+            src="/icons/icon-48.png"
+            alt=""
+            width={28}
+            height={28}
+            className="h-7 w-7 shrink-0 rounded object-contain"
+          />
           <div>
             <h1 className="text-sm font-semibold leading-tight text-white">reMarkable Sync</h1>
             <p className="text-xs text-slate-400">OneNote Bridge</p>

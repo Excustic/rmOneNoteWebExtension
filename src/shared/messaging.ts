@@ -1,3 +1,5 @@
+import type { CloudTreeSyncResult } from '../remarkable/types';
+
 export type SyncPhase =
   | 'Idle'
   | 'Queued'
@@ -35,6 +37,7 @@ export const DEFAULT_SYNC_OVERVIEW: SyncOverviewState = {
 export type RuntimeRequest =
   | { type: 'GET_SYNC_OVERVIEW' }
   | { type: 'TRIGGER_MANUAL_SYNC' }
+  | { type: 'SYNC_REMARKABLE_TREE'; forceRefresh?: boolean }
   | { type: 'PAIR_REMARKABLE'; code: string }
   | { type: 'DISCONNECT_REMARKABLE' }
   | { type: 'VERIFY_REMARKABLE_SESSION' }
@@ -43,5 +46,10 @@ export type RuntimeRequest =
   | { type: 'VERIFY_MICROSOFT_SESSION' };
 
 export type RuntimeResponse =
-  | { ok: true; state: SyncOverviewState; detail?: string }
+  | {
+      ok: true;
+      state: SyncOverviewState;
+      detail?: string;
+      treeSync?: CloudTreeSyncResult;
+    }
   | { ok: false; error: string };

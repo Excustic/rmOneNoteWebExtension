@@ -9,6 +9,10 @@ import {
   signOutMicrosoft,
 } from '../auth';
 import { getIndexedPageCount, resetInProgressPages } from '../db/repository';
+import {
+  clearStoredCloudRootState,
+  syncRemarkableCloudTree,
+} from '../remarkable';
 import { ext } from '../shared/browser';
 import {
   DEFAULT_SYNC_OVERVIEW,
@@ -39,6 +43,7 @@ const DEFAULT_PERSISTED_OVERVIEW: PersistedOverviewFields = {
 const VALID_REQUEST_TYPES = new Set<RuntimeRequest['type']>([
   'GET_SYNC_OVERVIEW',
   'TRIGGER_MANUAL_SYNC',
+  'SYNC_REMARKABLE_TREE',
   'PAIR_REMARKABLE',
   'DISCONNECT_REMARKABLE',
   'VERIFY_REMARKABLE_SESSION',
@@ -156,11 +161,30 @@ ext.runtime.onMessage.addListener(
           }
           case 'DISCONNECT_REMARKABLE': {
             await disconnectRemarkableDevice();
+            await clearStoredCloudRootState();
             const state = await readSyncOverview();
             return {
               ok: true,
               state,
               detail: 'reMarkable device token removed from this browser.',
+            };
+          }
+          case 'SYNC_REMARKABLE_TREE': {
+            await reconcileSyncLedgerToDexie();
+            const treeSync = await syncRemarkableCloudTree({
+              forceRefresh: Boolean(message.forceRefresh),
+            });
+            const state = await readSyncOverview();
+            const detail = `Loaded ${treeSync.totalItems} items (${treeSync.folderCount} folder${
+              treeSync.folderCount === 1 ? '' : 's'
+            }, ${treeSync.documentCount} document${
+              treeSync.documentCount === 1 ? '' : 's'
+            }).`;
+            return {
+              ok: true,
+              state,
+              detail,
+              treeSync,
             };
           }
           case 'VERIFY_REMARKABLE_SESSION': {
@@ -212,23 +236,25 @@ ext.runtime.onMessage.addListener(
             };
           }
           case 'TRIGGER_MANUAL_SYNC': {
-            // Verify silent token refresh readiness when accounts are paired
             const auth = await getAuthStatusSummary();
+            await reconcileSyncLedgerToDexie();
+
+            let treeSync = undefined;
             if (auth.remarkablePaired) {
-              await getValidRemarkableUserToken();
+              await writePersistedOverview({ phase: 'Queued', lastError: null });
+              treeSync = await syncRemarkableCloudTree();
             }
             if (auth.microsoftConnected) {
               await getValidMicrosoftAccessToken();
             }
 
-            // TODO(Phase 7): Execute cloud document fetch, WASM conversion, and Graph upload pipeline.
-            await reconcileSyncLedgerToDexie();
+            // TODO(Phase 7): Execute WASM conversion and Microsoft Graph upload pipeline for Pending pages.
             const updated = await writePersistedOverview({
               phase: 'Idle',
               lastError: null,
               lastSyncedAt: new Date().toISOString(),
             });
-            return { ok: true, state: updated };
+            return { ok: true, state: updated, treeSync };
           }
         }
       } catch (err) {
