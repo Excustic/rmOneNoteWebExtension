@@ -193,11 +193,31 @@ async function fetchSingleDocumentBundle(
     if (hasRmBlobs) {
       const contentTarget = `${documentId}.content`;
       const contentEntry = subEntries.find((entry) => entry.id === contentTarget);
-      const rawContent = contentEntry
-        ? await fetchSync15BlobText(contentEntry.hash, contentEntry.id, fetchImpl)
-        : null;
+      let rawContent: string | null = null;
+      if (contentEntry) {
+        try {
+          rawContent = await fetchSync15BlobText(
+            contentEntry.hash,
+            contentEntry.id,
+            fetchImpl,
+          );
+        } catch (err) {
+          console.warn(
+            `[rmOneNote] Failed to download ${contentTarget}; falling back to .docSchema page order:`,
+            err,
+          );
+        }
+      }
 
-      pages = resolveDocumentRmPages(documentId, subEntries, rawContent);
+      try {
+        pages = resolveDocumentRmPages(documentId, subEntries, rawContent);
+      } catch (err) {
+        console.warn(
+          `[rmOneNote] Malformed ${contentTarget} JSON; falling back to .docSchema page order:`,
+          err,
+        );
+        pages = resolveDocumentRmPages(documentId, subEntries, null);
+      }
     }
   }
 

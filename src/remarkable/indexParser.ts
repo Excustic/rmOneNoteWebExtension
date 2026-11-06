@@ -5,7 +5,9 @@ import type { ParsedSync15Index, Sync15IndexEntry } from './types';
  *
  * Format specification (`ddvk/rmapi/api/sync15/tree.go`):
  * - Line 1: `"3"` or `"4"`
- * - If `"4"`, Line 2 is a summary header: `0:.:<entriesCount>:<totalSize>`
+ * - If `"4"`, Line 2 is a 4-field summary header:
+ *   - `0:.:<entriesCount>:<totalSize>` in `root.docSchema`
+ *   - `0:<docId>:<entriesCount>:<totalSize>` in `<docId>.docSchema`
  * - Remaining non-empty lines: `<hash>:<entryType>:<id>:<subfiles>:<size>`
  */
 export function parseSync15Index(rawText: string): ParsedSync15Index {
@@ -30,7 +32,7 @@ export function parseSync15Index(rawText: string): ParsedSync15Index {
 
   if (schemaVersion === 4 && lines.length > 1) {
     const secondParts = lines[1].split(':');
-    if (secondParts[1] === '.') {
+    if (secondParts.length === 4) {
       startLine = 2;
     }
   }
@@ -64,3 +66,4 @@ export function parseSync15Index(rawText: string): ParsedSync15Index {
     entries,
   };
 }
+

@@ -142,6 +142,18 @@ describe('Sync15 index and metadata parsers', () => {
     expect(v4.entries[0].id).toBe(FOLDER_ACADEMY_ID);
     expect(v4.entries[1].size).toBe(4850);
 
+    const v4DocSubIndexRaw = [
+      '4',
+      '0:00cdb943-d8b6-4db7-9792-3dc44f06e93e:2:1562389',
+      'hash_doc_meta:0:00cdb943-d8b6-4db7-9792-3dc44f06e93e.metadata:0:189',
+      `hash_doc_rm:0:00cdb943-d8b6-4db7-9792-3dc44f06e93e/${PAGE_1_ID}.rm:0:1562200`,
+    ].join('\n');
+
+    const v4DocSub = parseSync15Index(v4DocSubIndexRaw);
+    expect(v4DocSub.schemaVersion).toBe(4);
+    expect(v4DocSub.entries).toHaveLength(2);
+    expect(v4DocSub.entries[0].id).toBe('00cdb943-d8b6-4db7-9792-3dc44f06e93e.metadata');
+
     expect(() => parseSync15Index('')).toThrow(/empty payload/i);
     expect(() => parseSync15Index('5\n0:.:0:0')).toThrow(/Unsupported reMarkable Sync15 schema/i);
   });

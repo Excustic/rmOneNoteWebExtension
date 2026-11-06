@@ -48,3 +48,4 @@ export function LegacyIcon({ name, className = 'h-4.5 w-4.5 shrink-0' }: LegacyI
     </svg>
   );
 }
+

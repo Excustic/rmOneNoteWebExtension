@@ -228,3 +228,4 @@ export async function downloadDocumentBlobBytes(
 
   return fetchSync15BlobBytes(targetHash, logicalFilename, fetchImpl);
 }
+

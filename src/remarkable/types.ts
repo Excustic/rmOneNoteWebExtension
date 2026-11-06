@@ -126,3 +126,4 @@ export interface CloudTreeSyncResult {
   indexedPagesCount: number;
   pendingPagesCount: number;
 }
+
