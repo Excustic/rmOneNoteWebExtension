@@ -1,3 +1,13 @@
+import {
+  disconnectRemarkableDevice,
+  fetchWithMicrosoftAuth,
+  getAuthStatusSummary,
+  getValidMicrosoftAccessToken,
+  getValidRemarkableUserToken,
+  pairRemarkableDevice,
+  signInWithMicrosoftInteractive,
+  signOutMicrosoft,
+} from '../auth';
 import { getIndexedPageCount, resetInProgressPages } from '../db/repository';
 import { ext } from '../shared/browser';
 import {
@@ -17,21 +27,32 @@ const OVERVIEW_STORAGE_KEY = 'syncOverview';
 
 type PersistedOverviewFields = Pick<
   SyncOverviewState,
-  'isConfigured' | 'phase' | 'lastSyncedAt' | 'lastError'
+  'phase' | 'lastSyncedAt' | 'lastError'
 >;
 
 const DEFAULT_PERSISTED_OVERVIEW: PersistedOverviewFields = {
-  isConfigured: DEFAULT_SYNC_OVERVIEW.isConfigured,
   phase: DEFAULT_SYNC_OVERVIEW.phase,
   lastSyncedAt: DEFAULT_SYNC_OVERVIEW.lastSyncedAt,
   lastError: DEFAULT_SYNC_OVERVIEW.lastError,
 };
 
+const VALID_REQUEST_TYPES = new Set<RuntimeRequest['type']>([
+  'GET_SYNC_OVERVIEW',
+  'TRIGGER_MANUAL_SYNC',
+  'PAIR_REMARKABLE',
+  'DISCONNECT_REMARKABLE',
+  'VERIFY_REMARKABLE_SESSION',
+  'SIGN_IN_MICROSOFT',
+  'SIGN_OUT_MICROSOFT',
+  'VERIFY_MICROSOFT_SESSION',
+]);
+
 async function readSyncOverview(): Promise<SyncOverviewState> {
-  const [storedResult, indexedPagesCount, warning] = await Promise.all([
+  const [storedResult, indexedPagesCount, warning, auth] = await Promise.all([
     ext.storage.local.get(OVERVIEW_STORAGE_KEY),
     getIndexedPageCount(),
     getBackupImportWarningStatus(),
+    getAuthStatusSummary(),
   ]);
 
   const stored = storedResult[OVERVIEW_STORAGE_KEY] as
@@ -41,6 +62,10 @@ async function readSyncOverview(): Promise<SyncOverviewState> {
   return {
     ...DEFAULT_PERSISTED_OVERVIEW,
     ...stored,
+    isConfigured: auth.isConfigured,
+    remarkablePaired: auth.remarkablePaired,
+    microsoftConnected: auth.microsoftConnected,
+    microsoftAccount: auth.microsoftAccount,
     indexedPagesCount,
     needsBackupImport: warning.needsBackupImport,
     missingHistoryCount: warning.missingHistoryCount,
@@ -71,7 +96,8 @@ function isRuntimeRequest(msg: unknown): msg is RuntimeRequest {
   }
   const candidate = msg as { type?: unknown };
   return (
-    candidate.type === 'GET_SYNC_OVERVIEW' || candidate.type === 'TRIGGER_MANUAL_SYNC'
+    typeof candidate.type === 'string' &&
+    VALID_REQUEST_TYPES.has(candidate.type as RuntimeRequest['type'])
   );
 }
 
@@ -119,11 +145,87 @@ ext.runtime.onMessage.addListener(
             const state = await readSyncOverview();
             return { ok: true, state };
           }
+          case 'PAIR_REMARKABLE': {
+            await pairRemarkableDevice(message.code);
+            const state = await readSyncOverview();
+            return {
+              ok: true,
+              state,
+              detail: 'reMarkable device token registered and session token verified.',
+            };
+          }
+          case 'DISCONNECT_REMARKABLE': {
+            await disconnectRemarkableDevice();
+            const state = await readSyncOverview();
+            return {
+              ok: true,
+              state,
+              detail: 'reMarkable device token removed from this browser.',
+            };
+          }
+          case 'VERIFY_REMARKABLE_SESSION': {
+            await getValidRemarkableUserToken({ forceRefresh: true });
+            const state = await readSyncOverview();
+            return {
+              ok: true,
+              state,
+              detail: 'reMarkable user session token refreshed successfully.',
+            };
+          }
+          case 'SIGN_IN_MICROSOFT': {
+            const msAuth = await signInWithMicrosoftInteractive({
+              clientId: message.clientId,
+              tenantId: message.tenantId,
+            });
+            const state = await readSyncOverview();
+            const accountLabel = msAuth.accountName ? ` as ${msAuth.accountName}` : '';
+            return {
+              ok: true,
+              state,
+              detail: `Connected to Microsoft OneNote${accountLabel}.`,
+            };
+          }
+          case 'SIGN_OUT_MICROSOFT': {
+            await signOutMicrosoft();
+            const state = await readSyncOverview();
+            return {
+              ok: true,
+              state,
+              detail: 'Signed out of Microsoft OneNote.',
+            };
+          }
+          case 'VERIFY_MICROSOFT_SESSION': {
+            await getValidMicrosoftAccessToken({ forceRefresh: true });
+            const graphProbe = await fetchWithMicrosoftAuth(
+              'https://graph.microsoft.com/v1.0/me/onenote/notebooks?$top=1&$select=id,displayName',
+            );
+            if (!graphProbe.ok) {
+              throw new Error(
+                `Microsoft Graph OneNote probe returned HTTP ${graphProbe.status}.`,
+              );
+            }
+            const state = await readSyncOverview();
+            return {
+              ok: true,
+              state,
+              detail: 'Silent token refresh and OneNote Graph API probe succeeded.',
+            };
+          }
           case 'TRIGGER_MANUAL_SYNC': {
-            // TODO(Phase 7): Wire into autonomous sync pipeline once auth, cloud fetch, WASM, and MS Graph services are complete.
+            // Verify silent token refresh readiness when accounts are paired
+            const auth = await getAuthStatusSummary();
+            if (auth.remarkablePaired) {
+              await getValidRemarkableUserToken();
+            }
+            if (auth.microsoftConnected) {
+              await getValidMicrosoftAccessToken();
+            }
+
+            // TODO(Phase 7): Execute cloud document fetch, WASM conversion, and Graph upload pipeline.
             await reconcileSyncLedgerToDexie();
             const updated = await writePersistedOverview({
               phase: 'Idle',
+              lastError: null,
               lastSyncedAt: new Date().toISOString(),
             });
             return { ok: true, state: updated };

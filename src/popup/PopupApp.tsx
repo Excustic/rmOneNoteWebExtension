@@ -125,6 +125,7 @@ export function PopupApp() {
           />
         ) : (
           <UnconfiguredView
+            overview={overview}
             onStartSetup={() => void handleOpenRoute('setup')}
             onOpenDashboard={() => void handleOpenDashboard()}
           />

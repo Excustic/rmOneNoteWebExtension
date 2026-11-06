@@ -251,9 +251,8 @@ export function SettingsView({
             </button>
             <p
               aria-live="polite"
-              className={`text-xs font-medium ${
-                saveMessage?.isError ? 'text-red-700' : 'text-slate-600'
-              }`}
+              className={`text-xs font-medium ${saveMessage?.isError ? 'text-red-700' : 'text-slate-600'
+                }`}
             >
               {saveMessage?.text ?? ''}
             </p>
@@ -266,9 +265,16 @@ export function SettingsView({
           Local Sync Database Backup & Transfer
         </h2>
         <p className="mt-1 text-sm text-slate-600">
-          Browser sync storage holds the ~1,280 most recently synced pages. When setting up a new
-          PC after exceeding that rolling window, export the local database JSON file from your
-          previous PC and import it here so older synced pages are recognized immediately.
+          Migrate your sync history to a new device/browser.
+          <br></br>
+          <br></br>
+          <b style={{ color: 'orange' }}>
+            Note
+          </b>
+          <br></br>
+          The extension supports up to 1280 pages in the browser's sync (cross-device) storage.
+          When installing the extension on a new platform, you will be notified whether a local import is required to restore full sync history.
+          If you ignore this notification, the extension will not remember older pages excluded from the sync storage.
         </p>
 
         {overview.needsBackupImport ? (
@@ -313,9 +319,8 @@ export function SettingsView({
 
         <p
           aria-live="polite"
-          className={`mt-3 text-xs font-medium ${
-            backupFeedback?.isError ? 'text-red-700' : 'text-emerald-700'
-          }`}
+          className={`mt-3 text-xs font-medium ${backupFeedback?.isError ? 'text-red-700' : 'text-emerald-700'
+            }`}
         >
           {backupFeedback?.text ?? ''}
         </p>

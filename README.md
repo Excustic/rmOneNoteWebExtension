@@ -13,8 +13,10 @@ This project migrates the desktop `rmOneNoteSync` daemon into a pure browser ext
 - **Storage & State Layer (`src/db/`, `src/storage/`):**
   - `Dexie.js` (IndexedDB) for local document tree, per-page sync deltas, OneNote notebook/section caching, and portable `.json` database backup/restore.
   - `browser.storage.sync` with 1-to-1 Base64url UUID packing for folder/file whitelists, user preferences, and a 1,280-page cross-PC rolling sync ledger with eviction detection.
-- **Planned Modules (Phases 3-7):**
-  - reMarkable Cloud OTP pairing and Microsoft Graph PKCE authentication via `browser.identity`.
+- **Authentication Layer (`src/auth/`):**
+  - reMarkable Cloud 8-character OTP device pairing (`/token/json/2/device/new`), JWT `exp`-aware session token caching (`/token/json/2/user/new`), and transparent HTTP 401 refresh-and-retry interceptor.
+  - Microsoft Entra ID OAuth 2.0 Authorization Code + S256 PKCE via `browser.identity.launchWebAuthFlow`, refresh token persistence in `browser.storage.local`, and silent HTTP 401 Graph API interceptor.
+- **Planned Modules (Phases 4-7):**
   - In-memory `.rm` archive extraction (`JSZip`) and Rust `rmc` WebAssembly (`WASM`) InkML/HTML conversion.
 
 ## Prerequisites

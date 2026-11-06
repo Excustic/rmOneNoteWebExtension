@@ -37,7 +37,7 @@ export function buildManifest(targetBrowser: 'chrome' | 'firefox'): Record<strin
         },
     permissions: ['storage', 'alarms', 'identity'],
     host_permissions: [
-      'https://webapp-prod.cloud.remarkable.com/*',
+      'https://webapp-prod.cloud.remarkable.engineering/*',
       'https://internal.cloud.remarkable.com/*',
       'https://*.storage.googleapis.com/*',
       'https://graph.microsoft.com/*',

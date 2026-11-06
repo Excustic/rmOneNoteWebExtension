@@ -1,9 +1,16 @@
+import type { SyncOverviewState } from '../../shared/messaging';
+
 interface UnconfiguredViewProps {
+  overview: SyncOverviewState;
   onStartSetup: () => void;
   onOpenDashboard: () => void;
 }
 
-export function UnconfiguredView({ onStartSetup, onOpenDashboard }: UnconfiguredViewProps) {
+export function UnconfiguredView({
+  overview,
+  onStartSetup,
+  onOpenDashboard,
+}: UnconfiguredViewProps) {
   return (
     <div className="flex flex-1 flex-col justify-between gap-4">
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-2xs">
@@ -12,6 +19,20 @@ export function UnconfiguredView({ onStartSetup, onOpenDashboard }: Unconfigured
           Pair your reMarkable Cloud account and sign in to Microsoft OneNote in a full tab so popup
           focus changes do not interrupt authentication.
         </p>
+        <dl className="mt-3 space-y-1 border-t border-slate-100 pt-2.5 text-xs">
+          <div className="flex items-center justify-between">
+            <dt className="text-slate-500">reMarkable Cloud</dt>
+            <dd className="font-medium text-slate-800">
+              {overview.remarkablePaired ? 'Paired' : 'Not paired'}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between">
+            <dt className="text-slate-500">Microsoft OneNote</dt>
+            <dd className="font-medium text-slate-800">
+              {overview.microsoftConnected ? 'Connected' : 'Not connected'}
+            </dd>
+          </div>
+        </dl>
       </div>
 
       <div className="flex flex-col gap-2">

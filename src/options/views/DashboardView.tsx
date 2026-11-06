@@ -81,10 +81,16 @@ export function DashboardView({
             Account Pairing
           </h2>
           <p className="mt-2 text-xl font-semibold text-slate-900">
-            {overview.isConfigured ? 'Connected' : 'Pending'}
+            {overview.isConfigured
+              ? 'Connected'
+              : overview.remarkablePaired || overview.microsoftConnected
+                ? '1 of 2 Connected'
+                : 'Pending'}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            reMarkable OTP and MS Graph PKCE wire in Phase 3.
+            {overview.isConfigured
+              ? `reMarkable paired${overview.microsoftAccount ? ` | ${overview.microsoftAccount}` : ' | Microsoft connected'}`
+              : `reMarkable: ${overview.remarkablePaired ? 'Paired' : 'Unpaired'} | Microsoft: ${overview.microsoftConnected ? 'Connected' : 'Pending'}`}
           </p>
         </article>
 

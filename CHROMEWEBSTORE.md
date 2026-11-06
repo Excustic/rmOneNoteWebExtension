@@ -57,7 +57,7 @@ English
 | `storage` | permissions | Stores user sync preferences, folder whitelists, and recent page sync ledger across devices (`storage.sync`), and persists authentication tokens and background sync status locally (`storage.local`). |
 | `alarms` | permissions | Triggers periodic background synchronization checks at the user-configured interval without keeping the service worker permanently awake. |
 | `identity` | permissions | Executes Microsoft OAuth 2.0 PKCE sign-in via `chrome.identity.launchWebAuthFlow` so users can authorize OneNote notebook uploads. |
-| `https://webapp-prod.cloud.remarkable.com/*` | host_permissions | Exchanges the user's one-time pairing code for a reMarkable device token and refreshes short-lived session tokens. |
+| `https://webapp-prod.cloud.remarkable.engineering/*` | host_permissions | Exchanges the user's one-time pairing code for a reMarkable device token and refreshes short-lived session tokens. |
 | `https://internal.cloud.remarkable.com/*` | host_permissions | Retrieves the user's reMarkable document metadata tree to detect updated notebooks and pages. |
 | `https://*.storage.googleapis.com/*` | host_permissions | Downloads pre-signed notebook archive blobs issued by reMarkable Cloud storage for in-memory page conversion. |
 | `https://graph.microsoft.com/*` | host_permissions | Uploads converted HTML and InkML notebook pages into the user's Microsoft OneNote notebooks and sections. |
@@ -104,7 +104,7 @@ https://github.com/Excustic/rmOneNoteWebExtension
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 0.1.0 | 2026-11-06 | Phase 1 MV3 cross-browser scaffold, popup and options routing architecture | Draft |
+| 0.1.0 | 2026-11-06 | Phases 1-3 MV3 cross-browser scaffold, IndexedDB + rolling sync ledger, reMarkable OTP pairing, and Microsoft PKCE authentication | Draft |
 
 ## Review Notes
 
