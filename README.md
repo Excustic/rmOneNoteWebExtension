@@ -18,8 +18,10 @@ This project migrates the desktop `rmOneNoteSync` daemon into a pure browser ext
   - Microsoft Entra ID OAuth 2.0 Authorization Code + S256 PKCE via `browser.identity.launchWebAuthFlow`, refresh token persistence in `browser.storage.local`, and silent HTTP 401 Graph API interceptor.
 - **reMarkable Sync15 Client (`src/remarkable/`):**
   - Native read-only Sync15 protocol client (`/sync/v4/root` and `/sync/v3/files/<hash>` with `rm-filename` headers), incremental SHA-256 tree & page delta indexing into IndexedDB, tri-state folder/notebook whitelisting (`FileBrowserView.tsx`), and direct in-memory `Uint8Array` `.rm` page retrieval (`downloadPageRmBytes`).
-- **Planned Modules (Phases 5-7):**
-  - Rust `rmc` WebAssembly (`WASM`) `.rm` -> InkML XML + Presentation HTML conversion, Microsoft Graph OneNote multipart upload with throttling/backoff, and autonomous `alarms` background sync loop.
+- **InkML & HTML Converter (`src/converter/`):**
+  - Pure native TypeScript port of `rmscene` + `rmc` (`inmkl.py`): decodes `.rm` v6 CRDT `SceneTree` blocks, Type Folio `RootTextBlock` formatting, 64-bit paragraph anchors, OS 3.6+ dynamic RGBA highlight/shader strokes, and legacy `.rm` v3/v5 strokes directly in memory into OneNote-compatible `application/inkml+xml` and `text/html` payloads (`convertRmPage`, `downloadAndConvertRmPage`) without WebAssembly or Python runtime overhead.
+- **Planned Modules (Phases 6-8):**
+  - Microsoft Graph OneNote multipart upload with throttling/backoff, autonomous `alarms` background sync loop, and full status/dashboard UI polish.
 
 ## Prerequisites
 
