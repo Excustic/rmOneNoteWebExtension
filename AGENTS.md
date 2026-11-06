@@ -26,3 +26,4 @@
 *   **Tone:** Concise, professional, and accessible. No corporate jargon. No fluff.
 *   **OSS Friendly:** Write documentation (README, CONTRIBUTING, code comments) so that a first-time open-source contributor can understand the architecture immediately.
 *   **Clarity:** Explain the *why* behind a piece of logic, not the *what*.
+

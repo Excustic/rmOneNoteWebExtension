@@ -1,7 +1,5 @@
-import { defineManifest } from '@crxjs/vite-plugin';
-
 /**
- * Cross-browser Manifest V3 configuration.
+ * Cross-browser Manifest V3 builder.
  *
  * - Chromium targets (Chrome, Edge, Opera) use `background.service_worker`.
  * - Firefox MV3 uses event pages (`background.scripts`) and requires `browser_specific_settings.gecko`
@@ -10,10 +8,10 @@ import { defineManifest } from '@crxjs/vite-plugin';
  * NOTE: `icons` and `action.default_icon` are intentionally omitted until curated
  * 16x16, 48x48, and 128x128 PNG assets are added to `public/icons/`.
  */
-export default defineManifest((env) => {
-  const isFirefox = env.mode === 'firefox';
+export function buildManifest(targetBrowser: 'chrome' | 'firefox'): Record<string, unknown> {
+  const isFirefox = targetBrowser === 'firefox';
 
-  return {
+  const manifest: Record<string, unknown> = {
     manifest_version: 3,
     name: 'reMarkable to OneNote Sync',
     short_name: 'rmOneNote',
@@ -31,6 +29,7 @@ export default defineManifest((env) => {
     background: isFirefox
       ? {
           scripts: ['src/background/index.ts'],
+          type: 'module',
         }
       : {
           service_worker: 'src/background/index.ts',
@@ -44,18 +43,19 @@ export default defineManifest((env) => {
       'https://graph.microsoft.com/*',
       'https://login.microsoftonline.com/*',
     ],
-    ...(isFirefox
-      ? {
-          browser_specific_settings: {
-            gecko: {
-              id: 'rm-onenote-sync@excustic.dev',
-              strict_min_version: '115.0',
-              data_collection_permissions: {
-                required: ['none'],
-              },
-            },
-          },
-        }
-      : {}),
   };
-});
+
+  if (isFirefox) {
+    manifest.browser_specific_settings = {
+      gecko: {
+        id: 'rm-onenote-sync@excustic.dev',
+        strict_min_version: '115.0',
+        data_collection_permissions: {
+          required: ['none'],
+        },
+      },
+    };
+  }
+
+  return manifest;
+}

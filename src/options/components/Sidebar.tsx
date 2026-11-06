@@ -78,3 +78,4 @@ export function Sidebar({ activeRoute, isConfigured }: SidebarProps) {
     </aside>
   );
 }
+

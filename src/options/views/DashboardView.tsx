@@ -64,3 +64,4 @@ export function DashboardView({ overview, onNavigate }: DashboardViewProps) {
     </div>
   );
 }
+

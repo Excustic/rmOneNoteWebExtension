@@ -79,3 +79,4 @@ export function SettingsView({ onOpenSetup }: SettingsViewProps) {
     </div>
   );
 }
+

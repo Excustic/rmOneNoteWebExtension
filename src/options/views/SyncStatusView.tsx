@@ -56,3 +56,4 @@ export function SyncStatusView({ overview }: SyncStatusViewProps) {
     </div>
   );
 }
+

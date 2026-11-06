@@ -20,3 +20,4 @@ export async function openOptionsAtRoute(hashRoute: string): Promise<void> {
   const url = ext.runtime.getURL(`options.html#${normalized}`);
   await ext.tabs.create({ url });
 }
+

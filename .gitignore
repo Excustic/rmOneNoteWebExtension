@@ -2,6 +2,9 @@
 node_modules/
 .pnpm-store/
 
+# Persistent browser dev profiles (contains local auth tokens & storage)
+.dev-profile/
+
 # Build outputs
 dist/
 *.crx
@@ -9,7 +12,7 @@ dist/
 *.zip
 *.pem
 
-# Vite & CRXJS caches
+# Vite caches
 .vite/
 
 # Logs & OS files
@@ -17,7 +20,8 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Editor directories (keep .vscode recommendations if added later)
+# Editor directories
+.history/
 .idea/
 *.swp
 *.swo

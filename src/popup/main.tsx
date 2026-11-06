@@ -13,3 +13,4 @@ createRoot(container).render(
     <PopupApp />
   </StrictMode>,
 );
+

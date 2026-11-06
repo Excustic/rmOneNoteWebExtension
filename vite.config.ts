@@ -1,33 +1,48 @@
+import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { crx } from '@crxjs/vite-plugin';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
-import manifest from './src/manifest';
+import webExtension from 'vite-plugin-web-extension';
+import { buildManifest } from './src/manifest';
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const isFirefox = mode === 'firefox';
-  const targetDir = isFirefox ? 'dist/firefox' : 'dist/chromium';
+  const targetBrowser = isFirefox ? 'firefox' : 'chrome';
+  const outDir = isFirefox ? 'dist/firefox' : 'dist/chromium';
+
+  const profileDir = resolve(
+    __dirname,
+    isFirefox ? '.dev-profile/firefox' : '.dev-profile/chromium',
+  );
+
+  if (command === 'serve') {
+    // Ensure persistent browser profile directory exists before web-ext launches
+    // so authentication tokens and IndexedDB state survive across dev sessions.
+    mkdirSync(profileDir, { recursive: true });
+  }
 
   return {
     plugins: [
       react(),
       tailwindcss(),
-      crx({
-        manifest,
-        browser: isFirefox ? 'firefox' : 'chrome',
+      webExtension({
+        manifest: () => buildManifest(targetBrowser),
+        browser: targetBrowser,
+        webExtConfig: {
+          target: isFirefox ? 'firefox-desktop' : 'chromium',
+          keepProfileChanges: true,
+          firefoxProfile: profileDir,
+          chromiumProfile: profileDir,
+          profileCreateIfMissing: true,
+        },
       }),
     ],
     build: {
-      outDir: targetDir,
+      outDir,
       emptyOutDir: true,
+      modulePreload: false,
       target: 'esnext',
-      rollupOptions: {
-        input: {
-          popup: resolve(__dirname, 'popup.html'),
-          options: resolve(__dirname, 'options.html'),
-        },
-      },
     },
   };
 });

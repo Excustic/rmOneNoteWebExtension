@@ -111,3 +111,4 @@ https://github.com/Excustic/rmOneNoteWebExtension
 ### Known Issues / Limitations
 - Curated extension icons (`16x16`, `48x48`, `128x128`) are omitted from `manifest.ts` during Phase 1 and must be added before store submission.
 - After Chrome Web Store publication, update the Microsoft Entra OAuth redirect URI to include the store-assigned extension ID (or pin a public `key` in `manifest.ts`).
+

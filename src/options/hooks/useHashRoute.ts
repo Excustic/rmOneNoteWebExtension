@@ -34,3 +34,4 @@ export function useHashRoute(): {
 
   return { route, navigate };
 }
+

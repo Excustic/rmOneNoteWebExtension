@@ -75,3 +75,4 @@ export function getRouteDefinition(id: OptionsRouteId): OptionsRouteDefinition {
   const match = OPTIONS_ROUTES.find((route) => route.id === id);
   return match ?? OPTIONS_ROUTES[0];
 }
+

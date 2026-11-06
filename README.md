@@ -28,20 +28,20 @@ Install dependencies:
 pnpm install
 ```
 
-Build both browser targets (`dist/chromium` and `dist/firefox`):
+Launch live-reloading browser sessions with persistent local profiles (`.dev-profile/chromium` and `.dev-profile/firefox`, preserving OAuth tokens and IndexedDB across restarts):
+
+```bash
+# Launch Chromium with the extension installed and persistent profile
+pnpm run dev
+
+# Launch Firefox with the extension installed and persistent profile
+pnpm run dev:firefox
+```
+
+Build production unpacked bundles (`dist/chromium` and `dist/firefox`):
 
 ```bash
 pnpm run build
-```
-
-Run Vite watch/dev server for a specific browser family:
-
-```bash
-# Chrome, Edge, Opera
-pnpm run dev
-
-# Firefox
-pnpm run dev:firefox
 ```
 
 Run strict TypeScript verification:
@@ -50,7 +50,7 @@ Run strict TypeScript verification:
 pnpm run typecheck
 ```
 
-## Loading Unpacked Builds
+## Loading Production Builds Manually
 
 ### Chrome / Edge / Opera
 1. Navigate to `chrome://extensions` (or `edge://extensions`).

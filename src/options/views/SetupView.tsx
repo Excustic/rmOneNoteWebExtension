@@ -88,3 +88,4 @@ export function SetupView({ onCancel }: SetupViewProps) {
     </div>
   );
 }
+

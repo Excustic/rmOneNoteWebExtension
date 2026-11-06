@@ -33,3 +33,4 @@ export function UnconfiguredView({ onStartSetup, onOpenDashboard }: Unconfigured
     </div>
   );
 }
+
