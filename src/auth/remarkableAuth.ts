@@ -6,15 +6,14 @@ import {
 } from './authStore';
 import { extractJwtExpiryMs } from './jwt';
 
-export const REMARKABLE_DEVICE_TOKEN_URL =
-  'https://webapp-prod.cloud.remarkable.com/token/json/2/device/new';
-export const REMARKABLE_USER_TOKEN_URL =
-  'https://webapp-prod.cloud.remarkable.com/token/json/2/user/new';
+export const REMARKABLE_AUTH_HOST = 'https://webapp-prod.cloud.remarkable.engineering';
+export const REMARKABLE_DEVICE_TOKEN_URL = `${REMARKABLE_AUTH_HOST}/token/json/2/device/new`;
+export const REMARKABLE_USER_TOKEN_URL = `${REMARKABLE_AUTH_HOST}/token/json/2/user/new`;
 
 /**
- * Known client descriptor accepted by reMarkable Cloud's `/token/json/2/device/new` validator.
+ * Client descriptor matching `ddvk/rmapi` (`api/auth.go`) accepted by `/token/json/2/device/new`.
  */
-export const REMARKABLE_DEVICE_DESC = 'browser-chrome';
+export const REMARKABLE_DEVICE_DESC = 'desktop-linux';
 
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 const FALLBACK_USER_TOKEN_TTL_MS = 23 * 60 * 60 * 1000;
@@ -36,14 +35,22 @@ async function requestRemarkableUserToken(
   deviceToken: string,
   fetchImpl: typeof fetch,
 ): Promise<{ userToken: string; expiresAtMs: number }> {
-  const response = await fetchImpl(REMARKABLE_USER_TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${deviceToken}`,
-      Accept: 'text/plain',
-    },
-    body: '',
-  });
+  let response: Response;
+  try {
+    response = await fetchImpl(REMARKABLE_USER_TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${deviceToken}`,
+        Accept: 'text/plain',
+      },
+      body: '',
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Network error contacting reMarkable Cloud (${REMARKABLE_AUTH_HOST}): ${detail}. Ensure extension host permissions are granted in your browser.`,
+    );
+  }
 
   if (response.status === 401 || response.status === 403) {
     await clearRemarkableAuth();
@@ -81,18 +88,27 @@ export async function pairRemarkableDevice(
   const code = normalizeRemarkableOtp(rawCode);
   const deviceId = crypto.randomUUID();
 
-  const response = await fetchImpl(REMARKABLE_DEVICE_TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/plain',
-    },
-    body: JSON.stringify({
-      code,
-      deviceDesc: REMARKABLE_DEVICE_DESC,
-      deviceID: deviceId,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetchImpl(REMARKABLE_DEVICE_TOKEN_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer',
+        'Content-Type': 'application/json',
+        Accept: 'text/plain',
+      },
+      body: JSON.stringify({
+        code,
+        deviceDesc: REMARKABLE_DEVICE_DESC,
+        deviceID: deviceId,
+      }),
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Network error contacting reMarkable Cloud (${REMARKABLE_AUTH_HOST}): ${detail}. Ensure extension host permissions are granted in your browser.`,
+    );
+  }
 
   if (response.status === 400 || response.status === 401) {
     throw new Error(
@@ -227,3 +243,4 @@ export async function fetchWithRemarkableAuth(
 export async function disconnectRemarkableDevice(): Promise<void> {
   await clearRemarkableAuth();
 }
+

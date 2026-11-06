@@ -184,7 +184,7 @@ export async function signInWithMicrosoftInteractive(
 
   if (!config.clientId) {
     throw new Error(
-      'Microsoft Application (Client) ID is not configured. Enter your Azure Client ID or set VITE_AZURE_CLIENT_ID in .env.local.',
+      'Microsoft Application (Client) ID is not set yet. Paste your Azure Client ID into BUILT_IN_AZURE_CLIENT_ID in src/auth/authStore.ts.',
     );
   }
 
@@ -414,3 +414,4 @@ export async function fetchWithMicrosoftAuth(
 export async function signOutMicrosoft(): Promise<void> {
   await clearMicrosoftAuth();
 }
+

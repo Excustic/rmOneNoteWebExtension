@@ -7,6 +7,17 @@ const MS_CONFIG_STORAGE_KEY = 'msAuthConfig';
 export const DEFAULT_AZURE_TENANT_ID = 'common';
 const PLACEHOLDER_CLIENT_ID = '__REPLACE_ME__';
 
+/**
+ * Public OAuth 2.0 Application (Client) ID for Microsoft Entra ID (Authorization Code + PKCE).
+ * Paste your Azure App Registration UUID directly here so end users never have to create
+ * or enter an Azure App ID.
+ *
+ * Security note: In OAuth 2.0 PKCE public clients (RFC 7636), `client_id` is sent in plaintext
+ * inside every `/authorize` URL and is public by design. Security is enforced by PKCE S256,
+ * zero client secrets, delegated per-user consent, and locked extension Redirect URIs.
+ */
+export const BUILT_IN_AZURE_CLIENT_ID = '0a6b8d7c-e92a-47d9-8dd0-dc7e500ef798';
+
 export interface RemarkableAuthState {
   deviceId: string;
   deviceToken: string;
@@ -116,7 +127,7 @@ export async function getMicrosoftAuthConfig(): Promise<MicrosoftAuthConfig> {
   const storedTenantId = cleanEnvValue(raw?.tenantId);
 
   return {
-    clientId: storedClientId || resolveEnvClientId(),
+    clientId: storedClientId || cleanEnvValue(BUILT_IN_AZURE_CLIENT_ID) || resolveEnvClientId(),
     tenantId: storedTenantId || resolveEnvTenantId(),
   };
 }
@@ -200,3 +211,4 @@ export async function getAuthStatusSummary(): Promise<AuthStatusSummary> {
     isConfigured: remarkablePaired && microsoftConnected,
   };
 }
+

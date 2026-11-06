@@ -86,6 +86,8 @@ describe('Phase 3 Authentication Services & Silent Refresh Interceptors', () => 
     expect(paired.userToken).toBe(initialUserJwt);
 
     expect(calls).toHaveLength(2);
+    expect(calls[0].authHeader).toBe('Bearer');
+    expect(REMARKABLE_DEVICE_TOKEN_URL).toContain('remarkable.engineering');
     const deviceBody = JSON.parse(calls[0].body ?? '{}') as Record<string, string>;
     expect(deviceBody.code).toBe('apwngead');
     expect(deviceBody.deviceDesc).toBe(REMARKABLE_DEVICE_DESC);
@@ -302,3 +304,4 @@ describe('Phase 3 Authentication Services & Silent Refresh Interceptors', () => 
     expect(await getMicrosoftAuth()).toBeNull();
   });
 });
+

@@ -89,3 +89,4 @@ export function extractAccountNameFromIdToken(idToken: string | undefined): stri
   }
   return null;
 }
+

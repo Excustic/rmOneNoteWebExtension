@@ -1,10 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
-import {
-  type AuthStatusSummary,
-  DEFAULT_AZURE_TENANT_ID,
-  getAuthStatusSummary,
-  saveMicrosoftAuthConfig,
-} from '../../auth/authStore';
+import { type AuthStatusSummary, getAuthStatusSummary } from '../../auth/authStore';
 import { ext } from '../../shared/browser';
 import type { RuntimeResponse, SyncOverviewState } from '../../shared/messaging';
 
@@ -19,11 +14,32 @@ interface FeedbackMessage {
   text: string;
 }
 
+const REMARKABLE_HOST_ORIGINS = [
+  'https://webapp-prod.cloud.remarkable.engineering/*',
+  'https://internal.cloud.remarkable.com/*',
+  'https://*.storage.googleapis.com/*',
+];
+
+const MICROSOFT_HOST_ORIGINS = [
+  'https://login.microsoftonline.com/*',
+  'https://graph.microsoft.com/*',
+];
+
+/**
+ * Synchronously initiates `permissions.request` inside the active user-gesture turn
+ * before any `await` gap. Required in Firefox MV3 where `host_permissions` are not
+ * always auto-granted at install time; resolves immediately to `true` in Chromium.
+ */
+function requestHostOriginsFromGesture(origins: string[]): Promise<boolean> {
+  if (ext.permissions && typeof ext.permissions.request === 'function') {
+    return ext.permissions.request({ origins });
+  }
+  return Promise.resolve(true);
+}
+
 export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewProps) {
   const [authSummary, setAuthSummary] = useState<AuthStatusSummary | null>(null);
   const [otpCode, setOtpCode] = useState('');
-  const [clientId, setClientId] = useState('');
-  const [tenantId, setTenantId] = useState(DEFAULT_AZURE_TENANT_ID);
 
   const [isRmBusy, setIsRmBusy] = useState(false);
   const [rmFeedback, setRmFeedback] = useState<FeedbackMessage | null>(null);
@@ -35,8 +51,6 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
   const reloadSummary = useCallback(async () => {
     const summary = await getAuthStatusSummary();
     setAuthSummary(summary);
-    setClientId((prev) => prev || summary.clientId);
-    setTenantId((prev) => (prev === DEFAULT_AZURE_TENANT_ID ? summary.tenantId : prev));
   }, []);
 
   useEffect(() => {
@@ -45,10 +59,18 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
 
   async function handlePairRemarkable(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const permissionPromise = requestHostOriginsFromGesture(REMARKABLE_HOST_ORIGINS);
     setIsRmBusy(true);
     setRmFeedback(null);
 
     try {
+      const granted = await permissionPromise;
+      if (!granted) {
+        throw new Error(
+          'Host permission for reMarkable Cloud was denied. Allow access when prompted or enable Permissions in about:addons.',
+        );
+      }
+
       const response = (await ext.runtime.sendMessage({
         type: 'PAIR_REMARKABLE',
         code: otpCode,
@@ -76,9 +98,17 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
   }
 
   async function handleVerifyRemarkable() {
+    const permissionPromise = requestHostOriginsFromGesture(REMARKABLE_HOST_ORIGINS);
     setIsRmBusy(true);
     setRmFeedback(null);
     try {
+      const granted = await permissionPromise;
+      if (!granted) {
+        throw new Error(
+          'Host permission for reMarkable Cloud was denied. Allow access when prompted or enable Permissions in about:addons.',
+        );
+      }
+
       const response = (await ext.runtime.sendMessage({
         type: 'VERIFY_REMARKABLE_SESSION',
       })) as RuntimeResponse | undefined;
@@ -129,20 +159,21 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
     }
   }
 
-  async function handleSignInMicrosoft(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function handleSignInMicrosoft() {
+    const permissionPromise = requestHostOriginsFromGesture(MICROSOFT_HOST_ORIGINS);
     setIsMsBusy(true);
     setMsFeedback(null);
 
     try {
-      const savedConfig = await saveMicrosoftAuthConfig({ clientId, tenantId });
-      setClientId(savedConfig.clientId);
-      setTenantId(savedConfig.tenantId);
+      const granted = await permissionPromise;
+      if (!granted) {
+        throw new Error(
+          'Host permission for Microsoft OneNote was denied. Allow access when prompted or enable Permissions in about:addons.',
+        );
+      }
 
       const response = (await ext.runtime.sendMessage({
         type: 'SIGN_IN_MICROSOFT',
-        clientId: savedConfig.clientId,
-        tenantId: savedConfig.tenantId,
       })) as RuntimeResponse | undefined;
 
       if (!response?.ok) {
@@ -166,9 +197,17 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
   }
 
   async function handleVerifyMicrosoft() {
+    const permissionPromise = requestHostOriginsFromGesture(MICROSOFT_HOST_ORIGINS);
     setIsMsBusy(true);
     setMsFeedback(null);
     try {
+      const granted = await permissionPromise;
+      if (!granted) {
+        throw new Error(
+          'Host permission for Microsoft OneNote was denied. Allow access when prompted or enable Permissions in about:addons.',
+        );
+      }
+
       const response = (await ext.runtime.sendMessage({
         type: 'VERIFY_MICROSOFT_SESSION',
       })) as RuntimeResponse | undefined;
@@ -236,6 +275,7 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
   const rmPaired = authSummary?.remarkablePaired ?? overview.remarkablePaired;
   const msConnected = authSummary?.microsoftConnected ?? overview.microsoftConnected;
   const msAccount = authSummary?.microsoftAccount ?? overview.microsoftAccount;
+  const hasBuiltInClientId = Boolean(authSummary?.clientId);
   const redirectUri = authSummary?.redirectUri ?? '';
 
   return (
@@ -302,12 +342,12 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
             <p className="mt-2 text-sm text-slate-600">
               Generate an 8-character one-time code at{' '}
               <a
-                href="https://my.remarkable.com/device/desktop/connect"
+                href="https://my.remarkable.com/device/browser/connect"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-medium text-brand underline underline-offset-2 hover:text-brand-hover"
               >
-                my.remarkable.com/device/desktop/connect
+                my.remarkable.com/device/browser/connect
               </a>{' '}
               to register a browser device token.
             </p>
@@ -360,7 +400,7 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
                     type="text"
                     autoComplete="one-time-code"
                     autoCorrect="off"
-                    autoCapitalize="none"
+                    autoCapitalize="off"
                     spellCheck={false}
                     maxLength={12}
                     required
@@ -397,7 +437,7 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
           <div>
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-base font-semibold text-slate-900">
-                2. Microsoft OneNote OAuth (PKCE)
+                2. Microsoft OneNote Account
               </h2>
               <span
                 className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
@@ -411,39 +451,40 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
             </div>
 
             <p className="mt-2 text-sm text-slate-600">
-              Sign in with Microsoft Entra ID using Authorization Code + PKCE so converted pages
-              upload directly to your OneNote notebooks.
+              Sign in with your personal, work, or school Microsoft account so converted notebook
+              pages upload directly into OneNote.
             </p>
 
-            {redirectUri ? (
-              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium text-slate-700">
-                    Extension OAuth Redirect URI
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void handleCopyRedirectUri()}
-                    className="min-h-6 rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 transition-colors hover:bg-slate-100"
-                  >
-                    {copyFeedback || 'Copy URI'}
-                  </button>
-                </div>
-                <code className="mt-1 block break-all font-mono text-xs text-slate-800">
-                  {redirectUri}
-                </code>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Register this exact URI under Authentication &gt; Single-page application in your
-                  Azure App Registration.
+            {authSummary && !hasBuiltInClientId ? (
+              <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3.5 text-amber-950">
+                <p className="text-xs font-semibold">Maintainer Configuration Pending</p>
+                <p className="mt-1 text-xs text-amber-900">
+                  Set <code className="font-mono">BUILT_IN_AZURE_CLIENT_ID</code> in{' '}
+                  <code className="font-mono">src/auth/authStore.ts</code> so users sign in with one
+                  click. Register this browser&apos;s Redirect URI in your Azure App Registration:
                 </p>
+                {redirectUri ? (
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded border border-amber-200 bg-white px-2.5 py-1.5">
+                    <code className="break-all font-mono text-xs text-slate-800">
+                      {redirectUri}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyRedirectUri()}
+                      className="min-h-7 rounded border border-slate-300 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100"
+                    >
+                      {copyFeedback || 'Copy URI'}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
             {msConnected ? (
               <div className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs text-slate-700">
-                  Signed in{msAccount ? ` as ${msAccount}` : ''} (Client ID:{' '}
-                  <span className="font-mono">{clientId || 'configured'}</span>).
+                  Signed in{msAccount ? ` as ${msAccount}` : ''}. Refresh token stored locally for
+                  autonomous background uploads.
                 </p>
                 <div className="flex flex-wrap gap-2.5">
                   <button
@@ -465,70 +506,16 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
                 </div>
               </div>
             ) : (
-              <form
-                className="mt-4 space-y-3"
-                onSubmit={(e) => void handleSignInMicrosoft(e)}
-              >
-                <div>
-                  <label
-                    htmlFor="ms-client-id"
-                    className="block text-sm font-medium text-slate-700"
-                  >
-                    Azure Application (Client) ID
-                  </label>
-                  <p id="ms-client-id-hint" className="mt-0.5 text-xs text-slate-500">
-                    Defaults to VITE_AZURE_CLIENT_ID if set in .env.local, or paste your App
-                    Registration UUID here.
-                  </p>
-                  <input
-                    id="ms-client-id"
-                    name="clientId"
-                    type="text"
-                    autoCorrect="off"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    required
-                    value={clientId}
-                    onChange={(e) => setClientId(e.target.value)}
-                    placeholder="00000000-0000-0000-0000-000000000000"
-                    aria-describedby="ms-client-id-hint"
-                    className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-2xs"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="ms-tenant-id"
-                    className="block text-sm font-medium text-slate-700"
-                  >
-                    Directory (Tenant) ID
-                  </label>
-                  <p id="ms-tenant-id-hint" className="mt-0.5 text-xs text-slate-500">
-                    Keep &quot;common&quot; for personal Microsoft accounts and multi-tenant work or
-                    school accounts.
-                  </p>
-                  <input
-                    id="ms-tenant-id"
-                    name="tenantId"
-                    type="text"
-                    autoCorrect="off"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    value={tenantId}
-                    onChange={(e) => setTenantId(e.target.value)}
-                    aria-describedby="ms-tenant-id-hint"
-                    className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 shadow-2xs"
-                  />
-                </div>
-
+              <div className="mt-5">
                 <button
-                  type="submit"
+                  type="button"
                   disabled={isMsBusy}
+                  onClick={() => void handleSignInMicrosoft()}
                   className="min-h-9 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-hover disabled:opacity-60"
                 >
                   {isMsBusy ? 'Waiting for Microsoft Sign-In...' : 'Sign in with Microsoft'}
                 </button>
-              </form>
+              </div>
             )}
           </div>
 
