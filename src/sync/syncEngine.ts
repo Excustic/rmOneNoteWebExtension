@@ -27,6 +27,7 @@ import type { PageSyncOutcome, RunSyncCycleOptions, SyncCycleSummary } from './t
 const DEFAULT_SYNC_WORKER_CONCURRENCY = 3;
 
 const cancelledPageKeys = new Set<string>();
+const manualOverridePageKeys = new Set<string>();
 let activeDefaultSyncCycle: Promise<SyncCycleSummary> | null = null;
 
 function buildPageKey(documentId: string, pageId: string): string {
@@ -47,6 +48,7 @@ export async function cancelSyncItem(
 ): Promise<void> {
   const key = buildPageKey(documentId, pageId);
   cancelledPageKeys.add(key);
+  manualOverridePageKeys.delete(key);
   await updatePageStatus(
     documentId,
     pageId,
@@ -54,6 +56,67 @@ export async function cancelSyncItem(
     { lastError: 'Cancelled by user' },
     database,
   );
+}
+
+/**
+ * Queues specific documents and/or individual pages for immediate manual synchronization,
+ * even if they are already `'Uploaded'`, `'Skipped'`, or outside the recurring folder whitelist.
+ */
+export async function queueManualSyncItems(
+  options: {
+    documentIds?: readonly string[];
+    pages?: readonly { documentId: string; pageId: string }[];
+    database?: RmOneNoteDatabase;
+  } = {},
+): Promise<number> {
+  const database = options.database ?? db;
+  const docIdSet = new Set(
+    (options.documentIds ?? []).map((id) => id.trim()).filter(Boolean),
+  );
+  const explicitPages = options.pages ?? [];
+
+  if (docIdSet.size === 0 && explicitPages.length === 0) {
+    return 0;
+  }
+
+  return database.transaction('rw', database.pages, async () => {
+    const matchedMap = new Map<string, PageRecord>();
+
+    if (docIdSet.size > 0) {
+      for (const docId of docIdSet) {
+        const docPages = await database.pages.where('documentId').equals(docId).toArray();
+        for (const page of docPages) {
+          matchedMap.set(buildPageKey(page.documentId, page.pageId), page);
+        }
+      }
+    }
+
+    for (const ref of explicitPages) {
+      const existing = await database.pages.get([ref.documentId, ref.pageId]);
+      if (existing) {
+        matchedMap.set(buildPageKey(existing.documentId, existing.pageId), existing);
+      }
+    }
+
+    if (matchedMap.size === 0) {
+      return 0;
+    }
+
+    const updatedRecords: PageRecord[] = [];
+    for (const [key, page] of matchedMap.entries()) {
+      cancelledPageKeys.delete(key);
+      manualOverridePageKeys.add(key);
+      updatedRecords.push({
+        ...page,
+        status: 'Pending',
+        retryCount: 0,
+        lastError: null,
+      });
+    }
+
+    await database.pages.bulkPut(updatedRecords);
+    return updatedRecords.length;
+  });
 }
 
 /**
@@ -69,7 +132,9 @@ export async function retryFailedPages(
   const database = options.database ?? db;
 
   if (options.documentId && options.pageId) {
-    cancelledPageKeys.delete(buildPageKey(options.documentId, options.pageId));
+    const key = buildPageKey(options.documentId, options.pageId);
+    cancelledPageKeys.delete(key);
+    manualOverridePageKeys.add(key);
     return database.transaction('rw', database.pages, async () => {
       const existing = await database.pages.get([options.documentId!, options.pageId!]);
       if (!existing) {
@@ -214,6 +279,27 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
     };
   }
 
+  // Ensure any manually overridden pages stay Pending even if treeSync refreshed non-whitelisted docs.
+  if (manualOverridePageKeys.size > 0) {
+    await database.transaction('rw', database.pages, async () => {
+      for (const key of manualOverridePageKeys) {
+        const sepIdx = key.indexOf(':');
+        if (sepIdx <= 0) continue;
+        const docId = key.slice(0, sepIdx);
+        const pgId = key.slice(sepIdx + 1);
+        const row = await database.pages.get([docId, pgId]);
+        if (row && row.status !== 'Pending') {
+          await database.pages.put({
+            ...row,
+            status: 'Pending',
+            retryCount: 0,
+            lastError: null,
+          });
+        }
+      }
+    });
+  }
+
   // 3. Gather user preferences, active whitelist, and Pending pages.
   const [prefs, whitelist, allDocs, pendingPagesRaw] = await Promise.all([
     getPreferences(),
@@ -303,6 +389,8 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
 
   const processSinglePage = async (page: PageRecord): Promise<PageSyncOutcome> => {
     const pageKey = buildPageKey(page.documentId, page.pageId);
+    const isManualOverride = manualOverridePageKeys.has(pageKey);
+    manualOverridePageKeys.delete(pageKey);
 
     if (cancelledPageKeys.has(pageKey)) {
       await updatePageStatus(
@@ -323,7 +411,7 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
       };
     }
 
-    if (!whitelistedDocsLower.has(page.documentId.toLowerCase())) {
+    if (!whitelistedDocsLower.has(page.documentId.toLowerCase()) && !isManualOverride) {
       await updatePageStatus(page.documentId, page.pageId, 'Skipped', {}, database);
       return {
         documentId: page.documentId,

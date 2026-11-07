@@ -21,8 +21,11 @@ export {
 export {
   deriveInitialSelectionMap,
   extractWhitelistFromSelection,
+  type FolderSubtreeCounts,
   formatFolderItemCount,
   formatSelectionSummary,
+  getFolderSubtreeCounts,
+  getNodeSelectionState,
   type SelectionMap,
   type TriStateSelection,
   toggleNodeSelection,

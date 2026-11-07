@@ -10,6 +10,8 @@ import {
   extractWhitelistFromSelection,
   formatFolderItemCount,
   formatSelectionSummary,
+  getFolderSubtreeCounts,
+  getNodeSelectionState,
   normalizeRemarkableTimestamp,
   parseDocumentMetadata,
   parseSync15Index,
@@ -634,5 +636,72 @@ describe('Tri-state FileTree selection helpers', () => {
     expect(allUnchecked[FOLDER_ACADEMY_ID]).toBe(false);
     expect(allUnchecked[DOC_CALCULUS_ID]).toBe(false);
     expect(formatSelectionSummary(roots, allUnchecked)).toBe('No items selected');
+  });
+
+  it('propagates indeterminate null state and descendant selected counts across deeply nested folders', () => {
+    const roots = buildFileTreeHierarchy([
+      {
+        documentId: FOLDER_ACADEMY_ID,
+        visibleName: 'Academy',
+        type: 'CollectionType',
+        parent: '',
+        virtualPath: 'Academy',
+        cloudVersion: 1,
+        contentHash: 'h1',
+        lastModified: '2026-11-06T00:00:00.000Z',
+        oneNoteNotebookUrl: null,
+      },
+      {
+        documentId: FOLDER_SEMESTER_ID,
+        visibleName: 'Semester A',
+        type: 'CollectionType',
+        parent: FOLDER_ACADEMY_ID,
+        virtualPath: 'Academy/Semester A',
+        cloudVersion: 1,
+        contentHash: 'h2',
+        lastModified: '2026-11-06T00:00:00.000Z',
+        oneNoteNotebookUrl: null,
+      },
+      {
+        documentId: DOC_CALCULUS_ID,
+        visibleName: 'Calculus 1',
+        type: 'DocumentType',
+        parent: FOLDER_SEMESTER_ID,
+        virtualPath: 'Academy/Semester A/Calculus 1',
+        cloudVersion: 1,
+        contentHash: 'h3',
+        lastModified: '2026-11-06T00:00:00.000Z',
+        oneNoteNotebookUrl: null,
+      },
+      {
+        documentId: DOC_LINEAR_ID,
+        visibleName: 'Linear Algebra',
+        type: 'DocumentType',
+        parent: FOLDER_SEMESTER_ID,
+        virtualPath: 'Academy/Semester A/Linear Algebra',
+        cloudVersion: 1,
+        contentHash: 'h4',
+        lastModified: '2026-11-06T00:00:00.000Z',
+        oneNoteNotebookUrl: null,
+      },
+    ]);
+
+    const initial = deriveInitialSelectionMap(
+      roots,
+      { syncFiles: [DOC_CALCULUS_ID], syncFolders: [] },
+      true,
+    );
+
+    // Both parent (Semester A) and grandparent (Academy) must be indeterminate (null)
+    expect(getNodeSelectionState(initial, FOLDER_SEMESTER_ID)).toBeNull();
+    expect(getNodeSelectionState(initial, FOLDER_ACADEMY_ID)).toBeNull();
+
+    const academyCounts = getFolderSubtreeCounts(roots[0], initial);
+    expect(academyCounts).toEqual({
+      directFolders: 1,
+      directDocuments: 0,
+      totalDocuments: 2,
+      selectedDocuments: 1,
+    });
   });
 });

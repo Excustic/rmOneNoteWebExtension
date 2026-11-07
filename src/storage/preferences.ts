@@ -2,6 +2,10 @@ import type { Storage } from 'webextension-polyfill';
 import { ext } from '../shared/browser';
 import { packUuidList, unpackUuidList } from './uuidCodec';
 
+export const MIN_CONTAINER_WIDTH_PX = 760;
+export const MAX_CONTAINER_WIDTH_PX = 2400;
+export const DEFAULT_CONTAINER_WIDTH_PX = 1280;
+
 export interface UserPreferences {
   /** Autonomous background alarm period in minutes (`>= 1`). */
   syncIntervalMinutes: number;
@@ -15,6 +19,8 @@ export interface UserPreferences {
   maxRetries: number;
   /** Days to retain uploaded records during optional local cleanup. */
   cacheRetentionDays: number;
+  /** Main Options page container max-width in CSS pixels. */
+  containerWidthPx: number;
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
@@ -24,6 +30,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   targetSection: 'Documents',
   maxRetries: 3,
   cacheRetentionDays: 30,
+  containerWidthPx: DEFAULT_CONTAINER_WIDTH_PX,
 };
 
 export interface SyncWhitelist {
@@ -80,6 +87,12 @@ function normalizePreferences(raw: Partial<UserPreferences> | undefined): UserPr
       DEFAULT_USER_PREFERENCES.cacheRetentionDays,
       1,
       365,
+    ),
+    containerWidthPx: clampInt(
+      raw.containerWidthPx,
+      DEFAULT_USER_PREFERENCES.containerWidthPx,
+      MIN_CONTAINER_WIDTH_PX,
+      MAX_CONTAINER_WIDTH_PX,
     ),
   };
 }

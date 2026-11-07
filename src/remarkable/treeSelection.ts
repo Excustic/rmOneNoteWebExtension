@@ -4,6 +4,99 @@ import type { FileTreeNode } from './types';
 export type TriStateSelection = boolean | null;
 export type SelectionMap = Record<string, TriStateSelection>;
 
+export interface FolderSubtreeCounts {
+  directFolders: number;
+  directDocuments: number;
+  totalDocuments: number;
+  selectedDocuments: number;
+}
+
+/**
+ * Safely reads a tri-state value (`true`, `false`, or `null` for indeterminate)
+ * from `SelectionMap` without coalescing `null` (indeterminate) to `false`.
+ */
+export function getNodeSelectionState(
+  selectionMap: Readonly<SelectionMap>,
+  nodeId: string,
+): TriStateSelection {
+  return Object.prototype.hasOwnProperty.call(selectionMap, nodeId)
+    ? selectionMap[nodeId]
+    : false;
+}
+
+/**
+ * Computes direct child counts and recursive descendant document selection counts
+ * for a folder (`CollectionType`) node.
+ */
+export function getFolderSubtreeCounts(
+  node: FileTreeNode,
+  selectionMap: Readonly<SelectionMap>,
+): FolderSubtreeCounts {
+  let directFolders = 0;
+  let directDocuments = 0;
+  let totalDocuments = 0;
+  let selectedDocuments = 0;
+
+  for (const child of node.children) {
+    if (child.type === 'CollectionType') {
+      directFolders++;
+    } else {
+      directDocuments++;
+    }
+  }
+
+  const walkSubtree = (current: FileTreeNode): void => {
+    for (const child of current.children) {
+      if (child.type === 'CollectionType') {
+        walkSubtree(child);
+      } else {
+        totalDocuments++;
+        if (getNodeSelectionState(selectionMap, child.id) === true) {
+          selectedDocuments++;
+        }
+      }
+    }
+  };
+
+  if (node.type === 'CollectionType') {
+    walkSubtree(node);
+  }
+
+  return {
+    directFolders,
+    directDocuments,
+    totalDocuments,
+    selectedDocuments,
+  };
+}
+
+function recomputeFolderStatesBottomUp(
+  nodes: readonly FileTreeNode[],
+  nextMap: SelectionMap,
+): void {
+  for (const node of nodes) {
+    if (node.type === 'CollectionType' && node.children.length > 0) {
+      recomputeFolderStatesBottomUp(node.children, nextMap);
+
+      const counts = getFolderSubtreeCounts(node, nextMap);
+      if (counts.totalDocuments > 0) {
+        if (counts.selectedDocuments === 0) {
+          nextMap[node.id] = false;
+        } else if (counts.selectedDocuments === counts.totalDocuments) {
+          nextMap[node.id] = true;
+        } else {
+          nextMap[node.id] = null;
+        }
+      } else {
+        const childStates = node.children.map((child) => getNodeSelectionState(nextMap, child.id));
+        const allChecked = childStates.every((state) => state === true);
+        const allUnchecked = childStates.every((state) => state === false);
+        nextMap[node.id] = allChecked ? true : allUnchecked ? false : null;
+      }
+    }
+  }
+}
+
 /**
  * Computes initial tri-state checkbox states (`true`, `false`, or `null` for indeterminate)
  * from a hierarchical `FileTreeNode[]` tree and persisted `SyncWhitelist`.
@@ -17,42 +110,31 @@ export function deriveInitialSelectionMap(
   const foldersSet = new Set(whitelist.syncFolders.map((id) => id.trim().toLowerCase()));
   const map: SelectionMap = {};
 
-  const evaluateNode = (
+  const populateInitialStates = (
     node: FileTreeNode,
     hasWhitelistedAncestor: boolean,
-  ): TriStateSelection => {
+  ): void => {
     const idLower = node.id.toLowerCase();
     const isFolder = node.type === 'CollectionType';
 
     if (!isFolder) {
-      const checked = filesSet.has(idLower) || (autoAddNewFiles && hasWhitelistedAncestor);
-      map[node.id] = checked;
-      return checked;
+      map[node.id] = filesSet.has(idLower) || (autoAddNewFiles && hasWhitelistedAncestor);
+      return;
     }
 
     const folderExplicitlySelected = foldersSet.has(idLower) || hasWhitelistedAncestor;
+    map[node.id] = folderExplicitlySelected;
 
-    if (node.children.length === 0) {
-      map[node.id] = folderExplicitlySelected;
-      return folderExplicitlySelected;
+    for (const child of node.children) {
+      populateInitialStates(child, folderExplicitlySelected);
     }
-
-    const childStates = node.children.map((child) =>
-      evaluateNode(child, folderExplicitlySelected),
-    );
-
-    const allChecked = childStates.every((state) => state === true);
-    const allUnchecked = childStates.every((state) => state === false);
-    const state: TriStateSelection = allChecked ? true : allUnchecked ? false : null;
-
-    map[node.id] = state;
-    return state;
   };
 
   for (const root of roots) {
-    evaluateNode(root, false);
+    populateInitialStates(root, false);
   }
 
+  recomputeFolderStatesBottomUp(roots, map);
   return map;
 }
 
@@ -64,21 +146,6 @@ function setSubtreeState(
   nextMap[node.id] = target;
   for (const child of node.children) {
     setSubtreeState(child, target, nextMap);
-  }
-}
-
-function recomputeFolderStatesBottomUp(
-  nodes: readonly FileTreeNode[],
-  nextMap: SelectionMap,
-): void {
-  for (const node of nodes) {
-    if (node.type === 'CollectionType' && node.children.length > 0) {
-      recomputeFolderStatesBottomUp(node.children, nextMap);
-      const childStates = node.children.map((child) => nextMap[child.id] ?? false);
-      const allChecked = childStates.every((state) => state === true);
-      const allUnchecked = childStates.every((state) => state === false);
-      nextMap[node.id] = allChecked ? true : allUnchecked ? false : null;
-    }
   }
 }
 
@@ -94,7 +161,7 @@ export function toggleNodeSelection(
   targetNode: FileTreeNode,
 ): SelectionMap {
   const nextMap: SelectionMap = { ...currentMap };
-  const currentState = nextMap[targetNode.id] ?? false;
+  const currentState = getNodeSelectionState(nextMap, targetNode.id);
   const nextChecked = currentState !== true;
 
   setSubtreeState(targetNode, nextChecked, nextMap);
@@ -116,7 +183,7 @@ export function extractWhitelistFromSelection(
 
   const walk = (nodes: readonly FileTreeNode[]): void => {
     for (const node of nodes) {
-      if (selectionMap[node.id] === true) {
+      if (getNodeSelectionState(selectionMap, node.id) === true) {
         if (node.type === 'CollectionType') {
           syncFolders.push(node.id);
         } else {
@@ -181,4 +248,3 @@ export function formatSelectionSummary(
 
   return `Selected: ${parts.join(', ')}`;
 }
-

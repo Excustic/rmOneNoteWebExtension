@@ -1,7 +1,6 @@
 export type OptionsRouteId =
   | 'dashboard'
-  | 'files'
-  | 'sync-status'
+  | 'sync-control'
   | 'settings'
   | 'setup';
 
@@ -22,17 +21,10 @@ export const OPTIONS_ROUTES: readonly OptionsRouteDefinition[] = [
     showInSidebar: true,
   },
   {
-    id: 'files',
-    label: 'File Browser',
-    pageTitle: 'File Browser | reMarkable OneNote Sync',
-    iconPlaceholderName: 'File Browser',
-    showInSidebar: true,
-  },
-  {
-    id: 'sync-status',
-    label: 'Sync Status',
-    pageTitle: 'Sync Status | reMarkable OneNote Sync',
-    iconPlaceholderName: 'Sync Status',
+    id: 'sync-control',
+    label: 'Sync Control',
+    pageTitle: 'Sync Control | reMarkable OneNote Sync',
+    iconPlaceholderName: 'Sync Control',
     showInSidebar: true,
   },
   {
@@ -57,6 +49,9 @@ const VALID_ROUTE_IDS = new Set<string>(OPTIONS_ROUTES.map((route) => route.id))
 
 export function parseOptionsHash(hash: string): OptionsRouteId {
   const raw = hash.replace(/^#\/?/, '').trim().toLowerCase();
+  if (raw === 'files' || raw === 'sync-status') {
+    return 'sync-control';
+  }
   if (VALID_ROUTE_IDS.has(raw)) {
     return raw as OptionsRouteId;
   }

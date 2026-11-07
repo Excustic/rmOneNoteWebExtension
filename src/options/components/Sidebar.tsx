@@ -10,8 +10,7 @@ const SIDEBAR_ITEMS = OPTIONS_ROUTES.filter((route) => route.showInSidebar);
 
 const ROUTE_ICONS: Record<OptionsRouteId, LegacyIconName> = {
   dashboard: 'dashboard',
-  files: 'folder',
-  'sync-status': 'syncStatus',
+  'sync-control': 'folder',
   settings: 'settings',
   setup: 'settings',
 };
