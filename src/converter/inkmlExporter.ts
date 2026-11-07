@@ -91,22 +91,15 @@ function formatTransparency(strokeOpacity: number): string {
   return String(transparency);
 }
 
-function renderDefinitionsXml(
-  pens: readonly InkPen[],
-  maxCoordX: number,
-  maxCoordY: number
-): string {
-  const channelMaxX = Math.max(INKML_DEFAULT_CHANNEL_MAX, maxCoordX);
-  const channelMaxY = Math.max(INKML_DEFAULT_CHANNEL_MAX, maxCoordY);
-
+function renderDefinitionsXml(pens: readonly InkPen[]): string {
   const parts: string[] = [];
   parts.push('  <inkml:definitions>');
   parts.push(`
     <inkml:context xml:id="ctxCoordinatesWithPressure">
         <inkml:inkSource xml:id="inkSrcCoordinatesWithPressure">
             <inkml:traceFormat>
-                <inkml:channel name="X" type="integer" max="${channelMaxX}" units="himetric" />
-                <inkml:channel name="Y" type="integer" max="${channelMaxY}" units="himetric" />
+                <inkml:channel name="X" type="integer" max="${INKML_DEFAULT_CHANNEL_MAX}" units="himetric" />
+                <inkml:channel name="Y" type="integer" max="${INKML_DEFAULT_CHANNEL_MAX}" units="himetric" />
                 <inkml:channel name="F" type="integer" max="${INKML_DEFAULT_CHANNEL_MAX}" units="dev" />
             </inkml:traceFormat>
             <inkml:channelProperties>
@@ -147,8 +140,6 @@ interface TraceBuildState {
   maxX: number;
   minY: number;
   maxY: number;
-  maxScaledX: number;
-  maxScaledY: number;
   nextTraceId: number;
   traces: string[];
 }
@@ -158,9 +149,22 @@ function scaleCoordinate(
   y: number,
   state: TraceBuildState
 ): readonly [number, number] {
-  const scaledX = Math.trunc((x - state.minX) * INKML_WIDTH_CONV_CONSTANT + INKML_X_PAD);
-  const scaledY = Math.trunc((y - state.minY) * INKML_HEIGHT_CONV_CONSTANT + INKML_Y_PAD);
-  return [scaledX, scaledY];
+  let xRange = state.maxX - state.minX;
+  let yRange = state.maxY - state.minY;
+
+  if (xRange === 0) {
+    xRange = 1;
+  }
+  if (yRange === 0) {
+    yRange = 1;
+  }
+
+  const xNorm = (x - state.minX) / xRange;
+  const yNorm = (y - state.minY) / yRange;
+
+  const newX = Math.trunc(xNorm * xRange * INKML_WIDTH_CONV_CONSTANT + INKML_X_PAD);
+  const newY = Math.trunc(yNorm * yRange * INKML_HEIGHT_CONV_CONSTANT + INKML_Y_PAD);
+  return [newX, newY];
 }
 
 function appendStrokeTrace(
@@ -178,36 +182,20 @@ function appendStrokeTrace(
 
   const coords: string[] = [];
   for (const pt of line.points) {
-    const worldX = pt.x + moveX;
-    const worldY = pt.y + moveY;
-
-    if (worldX < state.minX) {
-      state.minX = worldX;
-    } else if (worldX > state.maxX) {
-      state.maxX = worldX;
+    if (pt.x < state.minX) {
+      state.minX = pt.x;
+    } else if (pt.x > state.maxX) {
+      state.maxX = pt.x;
     }
 
-    if (worldY < state.minY) {
-      state.minY = worldY;
-    } else if (worldY > state.maxY) {
-      state.maxY = worldY;
+    if (pt.y < state.minY) {
+      state.minY = pt.y;
+    } else if (pt.y > state.maxY) {
+      state.maxY = pt.y;
     }
 
-    const [scaledX, scaledY] = scaleCoordinate(worldX, worldY, state);
-    if (scaledX > state.maxScaledX) {
-      state.maxScaledX = scaledX;
-    }
-    if (scaledY > state.maxScaledY) {
-      state.maxScaledY = scaledY;
-    }
-
-    const scaledPressure = Math.max(
-      0,
-      Math.min(
-        INKML_DEFAULT_CHANNEL_MAX,
-        Math.trunc(pt.pressure * INKML_PRESSURE_CONV_CONSTANT)
-      )
-    );
+    const [scaledX, scaledY] = scaleCoordinate(pt.x + moveX, pt.y + moveY, state);
+    const scaledPressure = Math.trunc(pt.pressure * INKML_PRESSURE_CONV_CONSTANT);
     coords.push(`${scaledX} ${scaledY} ${scaledPressure}`);
   }
 
@@ -247,6 +235,9 @@ export function sceneTreeToInkMlXml(tree: SceneTree): {
   readonly inkmlXml: string;
   readonly traceCount: number;
 } {
+  const pens = collectUsedPens(tree);
+  const definitionsXml = renderDefinitionsXml(pens);
+
   const anchorPos = buildAnchorPos(tree.rootText);
   const initialBox = getBoundingBox(tree.root, anchorPos);
 
@@ -255,16 +246,11 @@ export function sceneTreeToInkMlXml(tree: SceneTree): {
     maxX: initialBox.xMax,
     minY: initialBox.yMin,
     maxY: initialBox.yMax,
-    maxScaledX: 0,
-    maxScaledY: 0,
     nextTraceId: 1,
     traces: [],
   };
 
   traverseGroupForTraces(tree.root, anchorPos, 0, 0, state);
-
-  const pens = collectUsedPens(tree);
-  const definitionsXml = renderDefinitionsXml(pens, state.maxScaledX, state.maxScaledY);
 
   const inkmlXml =
     XML_HEADER +
@@ -312,46 +298,22 @@ export function sceneTreeToPresentationHtml(
     const doc = buildTextDocument(rootText);
     const xOffset = 600;
     let yOffset = INKML_Y_PAD;
-    const xPos = Math.trunc(rootText.posX);
-    const yPos = Math.trunc(rootText.posY / 2);
-    const widthPx = Math.trunc(rootText.width);
 
     for (const paragraph of doc.contents) {
       yOffset += 20;
+      const xPos = Math.trunc(rootText.posX);
+      const yPos = Math.trunc(rootText.posY / 2);
+      const widthPx = Math.trunc(rootText.width);
+
       if (paragraph.plainText.length > 0 && paragraph.contents.length > 0) {
         const baseProps = paragraph.contents[0].properties;
         const pStyle = `font-weight: ${baseProps['font-weight']};font-style: ${baseProps['font-style']}`;
-
-        let innerHtml: string;
-        if (paragraph.contents.length === 1) {
-          innerHtml = escapeTextWithLineBreaks(paragraph.plainText.trim());
-        } else {
-          // Preserve inline bold/italic transitions across spans while trimming outer whitespace
-          const renderedSpans = paragraph.contents.map((span, idx) => {
-            let textSegment = span.text;
-            if (idx === 0) {
-              textSegment = textSegment.replace(/^\s+/, '');
-            }
-            if (idx === paragraph.contents.length - 1) {
-              textSegment = textSegment.replace(/\s+$/, '');
-            }
-            const escaped = escapeTextWithLineBreaks(textSegment);
-            if (
-              span.properties['font-weight'] === baseProps['font-weight'] &&
-              span.properties['font-style'] === baseProps['font-style']
-            ) {
-              return escaped;
-            }
-            const spanStyle = `font-weight: ${span.properties['font-weight']};font-style: ${span.properties['font-style']}`;
-            return `<span style="${spanStyle}">${escaped}</span>`;
-          });
-          innerHtml = renderedSpans.join('');
-        }
-
+        const content = escapeTextWithLineBreaks(paragraph.plainText.trim());
         const divId = escapeHtml(formatCrdtId(paragraph.startId));
+
         htmlParts.push(
-          `\n                <div id="${divId}" style="position: absolute; left: ${xPos + xOffset}px; top: ${yPos + yOffset}px; width: ${widthPx}px">\n` +
-            `                    <p style="${pStyle}">${innerHtml}</p>\n` +
+          `   \n                <div id="${divId}" style="position: absolute; left: ${xPos + xOffset}px; top: ${yPos + yOffset}px; width: ${widthPx}px">\n` +
+            `                    <p style="${pStyle}">${content}</p>\n` +
             `                </div>`
         );
         yOffset += getParagraphLineHeight(paragraph.style.value) - 20;

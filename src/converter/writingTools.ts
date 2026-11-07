@@ -40,47 +40,45 @@ export interface InkPen {
   readonly strokeLinecap: 'round' | 'square';
   readonly strokeOpacity: number;
   readonly strokeWidth: number;
+  readonly strokeWidthIsInt: boolean;
   readonly colorHex: string;
   readonly colorKey: string;
   readonly rasterOp: 'maskPen' | 'copyPen';
 }
 
-function formatNumericIdSegment(value: number): string {
+function formatStrokeWidthSegment(value: number, isInt: boolean): string {
+  if (isInt) {
+    return String(Math.trunc(value));
+  }
   if (Number.isInteger(value)) {
-    // Match Python float formatting when thickness_scale came from a float vs int:
-    // XML NCName allows digits and '.', so clean canonical number string is ideal.
+    return `${value}.0`;
+  }
+  return String(Number(value.toFixed(6)));
+}
+
+function formatOpacitySegment(value: number): string {
+  if (Number.isInteger(value)) {
     return String(value);
   }
   return String(Number(value.toFixed(6)));
 }
 
 export function generateBrushIdFromPen(pen: InkPen): string {
-  const safeName = pen.name.replace(/\s+/g, '_');
-  const widthStr = formatNumericIdSegment(pen.strokeWidth);
-  const opacityStr = formatNumericIdSegment(pen.strokeOpacity);
-  return `name_${safeName}_cap_${pen.strokeLinecap}_op_${opacityStr}_w_${widthStr}_clr_${pen.colorKey}`;
+  const widthStr = formatStrokeWidthSegment(pen.strokeWidth, pen.strokeWidthIsInt);
+  const opacityStr = formatOpacitySegment(pen.strokeOpacity);
+  return `name_${pen.name}_cap_${pen.strokeLinecap}_op_${opacityStr}_w_${widthStr}_clr_${pen.colorKey}`;
 }
 
 function resolveStrokeColor(
   rawColorId: number,
-  colorRgba: RgbaColor | null
+  _colorRgba: RgbaColor | null
 ): { rgb: RgbTuple; colorKey: string } {
-  // Eraser overrides rawColorId before calling resolveStrokeColor.
-  // Dynamic highlight/shader colors (PenColor.HIGHLIGHT === 9 or future IDs) carry explicit RGBA in v3.6+.
-  if ((rawColorId === PenColor.HIGHLIGHT || !(rawColorId in RM_PALETTE)) && colorRgba !== null) {
-    const rgb: RgbTuple = [colorRgba[0], colorRgba[1], colorRgba[2]];
-    const hexWithoutHash = rgbToHex(rgb).slice(1);
-    return { rgb, colorKey: `rgba_${hexWithoutHash}` };
-  }
+  const normalizedColorId =
+    rawColorId === PenColor.HIGHLIGHT ? PenColor.YELLOW : rawColorId;
 
-  if (rawColorId === PenColor.HIGHLIGHT) {
-    const yellow = RM_PALETTE[PenColor.YELLOW];
-    return { rgb: yellow, colorKey: String(PenColor.YELLOW) };
-  }
-
-  const mapped = RM_PALETTE[rawColorId];
+  const mapped = RM_PALETTE[normalizedColorId];
   if (mapped) {
-    return { rgb: mapped, colorKey: String(rawColorId) };
+    return { rgb: mapped, colorKey: String(normalizedColorId) };
   }
 
   return { rgb: RM_PALETTE[PenColor.BLACK], colorKey: String(PenColor.BLACK) };
@@ -105,6 +103,7 @@ export function createInkPen(
         strokeLinecap: 'round',
         strokeOpacity: 1,
         strokeWidth: thicknessScale,
+        strokeWidthIsInt: false,
         colorHex,
         colorKey,
         rasterOp: 'copyPen',
@@ -117,6 +116,7 @@ export function createInkPen(
         strokeLinecap: 'round',
         strokeOpacity: 1,
         strokeWidth: thicknessScale,
+        strokeWidthIsInt: false,
         colorHex,
         colorKey,
         rasterOp: 'copyPen',
@@ -129,6 +129,7 @@ export function createInkPen(
         strokeLinecap: 'round',
         strokeOpacity: 1,
         strokeWidth: thicknessScale,
+        strokeWidthIsInt: false,
         colorHex,
         colorKey,
         rasterOp: 'copyPen',
@@ -141,6 +142,7 @@ export function createInkPen(
         strokeLinecap: 'round',
         strokeOpacity: 1,
         strokeWidth: thicknessScale,
+        strokeWidthIsInt: false,
         colorHex,
         colorKey,
         rasterOp: 'copyPen',
@@ -153,6 +155,7 @@ export function createInkPen(
         strokeLinecap: 'round',
         strokeOpacity: 1,
         strokeWidth: thicknessScale * 1.8,
+        strokeWidthIsInt: false,
         colorHex,
         colorKey,
         rasterOp: 'copyPen',
@@ -165,6 +168,7 @@ export function createInkPen(
         strokeLinecap: 'round',
         strokeOpacity: 1,
         strokeWidth: thicknessScale,
+        strokeWidthIsInt: false,
         colorHex,
         colorKey,
         rasterOp: 'copyPen',
@@ -173,10 +177,11 @@ export function createInkPen(
     case PenType.MECHANICAL_PENCIL_1:
     case PenType.MECHANICAL_PENCIL_2:
       return {
-        name: 'Mechanical_Pencil',
+        name: 'Mechanical Pencil',
         strokeLinecap: 'round',
         strokeOpacity: 1,
         strokeWidth: thicknessScale ** 2,
+        strokeWidthIsInt: false,
         colorHex,
         colorKey,
         rasterOp: 'copyPen',
@@ -189,6 +194,7 @@ export function createInkPen(
         strokeLinecap: 'square',
         strokeOpacity: 0.2,
         strokeWidth: 15,
+        strokeWidthIsInt: true,
         colorHex,
         colorKey,
         rasterOp: 'maskPen',
@@ -200,6 +206,7 @@ export function createInkPen(
         strokeLinecap: 'round',
         strokeOpacity: 1,
         strokeWidth: 12,
+        strokeWidthIsInt: true,
         colorHex,
         colorKey,
         rasterOp: 'copyPen',
@@ -211,6 +218,7 @@ export function createInkPen(
         strokeLinecap: 'square',
         strokeOpacity: 1,
         strokeWidth: thicknessScale * 2,
+        strokeWidthIsInt: false,
         colorHex,
         colorKey,
         rasterOp: 'copyPen',
@@ -218,10 +226,11 @@ export function createInkPen(
 
     case PenType.ERASER_AREA:
       return {
-        name: 'Erase_Area',
+        name: 'Erase Area',
         strokeLinecap: 'square',
         strokeOpacity: 1,
         strokeWidth: thicknessScale,
+        strokeWidthIsInt: false,
         colorHex,
         colorKey,
         rasterOp: 'copyPen',
@@ -233,6 +242,7 @@ export function createInkPen(
         strokeLinecap: 'round',
         strokeOpacity: 1,
         strokeWidth: thicknessScale * 1.8,
+        strokeWidthIsInt: false,
         colorHex,
         colorKey,
         rasterOp: 'copyPen',

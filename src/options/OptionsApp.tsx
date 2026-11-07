@@ -86,7 +86,18 @@ export function OptionsApp() {
           />
         );
       case 'sync-status':
-        return <SyncStatusView overview={overview} />;
+        return (
+          <SyncStatusView
+            overview={overview}
+            onSyncStateChanged={(next) => {
+              if (next) {
+                setOverview(next);
+              } else {
+                void refreshOverview();
+              }
+            }}
+          />
+        );
       case 'settings':
         return (
           <SettingsView

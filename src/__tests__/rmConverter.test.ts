@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { saveRemarkableAuth } from '../auth/authStore';
@@ -532,7 +533,7 @@ describe('Phase 5: Native TypeScript .rm to InkML + HTML Converter', () => {
     expect(result.inkmlXml).toContain('<inkml:brushProperty name="color" value="#4e69c9" />');
     expect(result.inkmlXml).toContain('<inkml:brushProperty name="width" value="36" units="himetric" />');
 
-    // Legacy highlighter -> Yellow #fbf719 + maskPen + transparency 0.8
+    // Legacy and modern highlighters both map PenColor.HIGHLIGHT (9) -> Yellow #fbf719 (clr_3) matching Python rmc
     expect(result.inkmlXml).toContain(
       '<inkml:brush xml:id="name_Highlighter_cap_square_op_0.2_w_15_clr_3">'
     );
@@ -540,23 +541,14 @@ describe('Phase 5: Native TypeScript .rm to InkML + HTML Converter', () => {
     expect(result.inkmlXml).toContain('<inkml:brushProperty name="transparency" value="0.8" />');
     expect(result.inkmlXml).toContain('<inkml:brushProperty name="rasterOp" value="maskPen" />');
 
-    // Dynamic RGBA highlighter -> #ff8040
+    // Mechanical Pencil matches Python rmc naming and float width formatting
     expect(result.inkmlXml).toContain(
-      '<inkml:brush xml:id="name_Highlighter_cap_square_op_0.2_w_15_clr_rgba_ff8040">'
-    );
-    expect(result.inkmlXml).toContain('<inkml:brushProperty name="color" value="#ff8040" />');
-
-    // Mechanical_Pencil has no invalid XML ID spaces
-    expect(result.inkmlXml).toContain(
-      '<inkml:brush xml:id="name_Mechanical_Pencil_cap_round_op_1_w_4_clr_0">'
+      '<inkml:brush xml:id="name_Mechanical Pencil_cap_round_op_1_w_4.0_clr_0">'
     );
 
     // Verify 48-bit anchor offset (anchorOriginX=50, anchorY=100; default minX=-702, minY=0)
-    // Stroke 1 pt 1: worldX = 0 + 50 = 50 -> (50 - (-702)) * 10 = 7520
-    //                worldY = 100 + 100 = 200 -> (200 - 0) * 10 + 600 = 2600
-    //                pressure = 100 * 128 = 12800
     expect(result.inkmlXml).toContain(
-      '<inkml:trace xml:id="1" contextRef="#ctxCoordinatesWithPressure" brushRef="#name_Fineliner_cap_round_op_1_w_3.6_clr_6">7520 2600 12800,8520 3600 25600</inkml:trace>'
+      '<inkml:trace xml:id="1" contextRef="#ctxCoordinatesWithPressure" brushRef="#name_Fineliner_cap_round_op_1_w_3.6_clr_6">7520 2600 12800,8519 3600 25600</inkml:trace>'
     );
 
     // Verify Presentation HTML escaping, title, line breaks, and bold formatting
@@ -641,5 +633,26 @@ describe('Phase 5: Native TypeScript .rm to InkML + HTML Converter', () => {
     expect(converted.presentationHtml).toContain(
       '<img data-render-src="name:background" style="position:absolute;top:0;left:0;z-index:-1" />'
     );
+  });
+
+  it('produces byte-for-byte identical InkML XML and Presentation HTML to Python rmc on test_v_3_18.rm', () => {
+    const rmBytes = new Uint8Array(
+      fs.readFileSync('src/__tests__/fixtures/test_v_3_18.rm')
+    );
+    const expectedXml = fs.readFileSync(
+      'src/__tests__/fixtures/test_v_3_18.xml.xml',
+      'utf-8'
+    );
+    const expectedHtml = fs.readFileSync(
+      'src/__tests__/fixtures/test_v_3_18.xml.html',
+      'utf-8'
+    );
+
+    const actual = convertRmPage(rmBytes, { pageTitle: 'test_v_3_18.xml' });
+
+    expect(actual.traceCount).toBe(525);
+    expect(actual.paragraphCount).toBe(2);
+    expect(actual.presentationHtml).toBe(expectedHtml);
+    expect(actual.inkmlXml).toBe(expectedXml);
   });
 });
