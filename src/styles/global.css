@@ -91,6 +91,222 @@
   }
 }
 
+/* Pure CSS geometric status icons (green tick, red X, amber pending clock). */
+.status-icon-check {
+  display: inline-grid;
+  place-content: center;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  border-radius: 9999px;
+  border: 1px solid #6ee7b7;
+  background-color: #ecfdf5;
+  color: #059669;
+  flex-shrink: 0;
+
+  &::before {
+    content: "";
+    inline-size: 0.72rem;
+    block-size: 0.72rem;
+    background-color: currentColor;
+    mask: var(--icon-check) no-repeat center / contain;
+  }
+}
+
+.status-icon-failed {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  border-radius: 9999px;
+  border: 1px solid #fda4af;
+  background-color: #fff1f2;
+  color: #e11d48;
+  flex-shrink: 0;
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    inline-size: 0.62rem;
+    block-size: 2px;
+    border-radius: 1px;
+    background-color: currentColor;
+  }
+
+  &::before {
+    transform: rotate(45deg);
+  }
+
+  &::after {
+    transform: rotate(-45deg);
+  }
+}
+
+.status-icon-pending {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  border-radius: 9999px;
+  border: 1.5px solid #f59e0b;
+  background-color: #fffbeb;
+  color: #d97706;
+  flex-shrink: 0;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inline-size: 1.5px;
+    block-size: 0.34rem;
+    background-color: currentColor;
+    border-radius: 1px;
+    inset-block-start: 0.22rem;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    inline-size: 0.28rem;
+    block-size: 1.5px;
+    background-color: currentColor;
+    border-radius: 1px;
+    inset-inline-start: 0.52rem;
+    inset-block-start: 0.5rem;
+  }
+}
+
+.status-spin {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: spin 1s linear infinite;
+  }
+}
+
+/* Visual tree guide lines for expanded folder hierarchies. */
+.tree-guide-group {
+  position: relative;
+  margin-inline-start: 1.15rem;
+  padding-inline-start: 0.85rem;
+  border-inline-start: 1.5px solid #cbd5e1;
+}
+
+.tree-guide-row {
+  position: relative;
+}
+
+.tree-guide-row[data-nested="true"]::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: -0.85rem;
+  inset-block-start: 50%;
+  inline-size: 0.65rem;
+  block-size: 1.5px;
+  background-color: #cbd5e1;
+}
+
+/* Subtle hold-and-drag edge dividers on both sides of the centered main container. */
+.container-resize-handle {
+  position: absolute;
+  inset-block: 0;
+  inline-size: 16px;
+  z-index: 30;
+  cursor: col-resize;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+
+  &[data-side="left"] {
+    inset-inline-start: -8px;
+  }
+
+  &[data-side="right"] {
+    inset-inline-end: -8px;
+  }
+
+  /* Full-height vertical guide line */
+  &::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 50%;
+    inline-size: 3px;
+    transform: translateX(-50%);
+    border-radius: 9999px;
+    background-color: rgba(37, 99, 235, 0.45);
+    transition:
+      background-color 150ms ease,
+      box-shadow 150ms ease,
+      inline-size 150ms ease;
+  }
+
+  /* Center grab pill */
+  &::after {
+    content: "";
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-start: 50%;
+    inline-size: 5px;
+    block-size: 42px;
+    transform: translate(-50%, -50%);
+    border-radius: 9999px;
+    background-color: var(--color-brand);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
+    transition:
+      transform 150ms ease,
+      background-color 150ms ease,
+      box-shadow 150ms ease;
+  }
+
+  &:hover,
+  &:focus-visible,
+  &[data-dragging="true"] {
+    opacity: 1;
+  }
+
+  &:hover::before,
+  &:focus-visible::before {
+    background-color: rgba(37, 99, 235, 0.65);
+    box-shadow: 0 0 8px rgba(37, 99, 235, 0.25);
+  }
+
+  &[data-dragging="true"]::before {
+    inline-size: 4px;
+    background-color: var(--color-brand);
+    box-shadow: 0 0 12px rgba(37, 99, 235, 0.35);
+  }
+
+  &[data-dragging="true"]::after {
+    transform: translate(-50%, -50%) scaleY(1.15);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.22);
+  }
+
+  &[data-peer-dragging="true"] {
+    opacity: 0.55;
+  }
+}
+
+/* Smooth slide-in Pages Side Panel in Sync Control. */
+.pages-side-panel {
+  @media (prefers-reduced-motion: no-preference) {
+    transition:
+      inline-size 240ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 200ms ease-out,
+      transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+/* Scrollable regions with stable scrollbar gutter and contained overscroll. */
+.scroll-region {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
 .popup-surface {
   width: 380px;
   min-height: 260px;
@@ -118,4 +334,3 @@
   outline: 2px solid #93c5fd;
   outline-offset: 2px;
 }
-

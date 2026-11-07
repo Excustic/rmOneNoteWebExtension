@@ -2,8 +2,12 @@ import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react';
 import { serializeDatabaseBackup } from '../../db/backup';
 import type { SyncOverviewState } from '../../shared/messaging';
 import {
+  DEFAULT_CONTAINER_WIDTH_PX,
   DEFAULT_USER_PREFERENCES,
   getPreferences,
+  MAX_CONTAINER_WIDTH_PX,
+  MIN_CONTAINER_WIDTH_PX,
+  onSyncStorageChanged,
   type UserPreferences,
   updatePreferences,
 } from '../../storage/preferences';
@@ -11,16 +15,23 @@ import { importBackupAndReconcile } from '../../storage/syncLedger';
 
 interface SettingsViewProps {
   overview: SyncOverviewState;
+  containerWidthPx?: number;
+  onContainerWidthChange?: (widthPx: number, persist?: boolean) => void;
   onOpenSetup: () => void;
   onBackupStateChanged: () => void;
 }
 
 export function SettingsView({
   overview,
+  containerWidthPx,
+  onContainerWidthChange,
   onOpenSetup,
   onBackupStateChanged,
 }: SettingsViewProps) {
   const [prefs, setPrefs] = useState<UserPreferences>(DEFAULT_USER_PREFERENCES);
+  const [localWidth, setLocalWidth] = useState<number>(
+    containerWidthPx ?? DEFAULT_CONTAINER_WIDTH_PX
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{
     isError: boolean;
@@ -33,14 +44,37 @@ export function SettingsView({
   const [isBusy, setIsBusy] = useState(false);
 
   useEffect(() => {
+    if (typeof containerWidthPx === 'number') {
+      setLocalWidth(containerWidthPx);
+      setPrefs((prev) =>
+        prev.containerWidthPx === containerWidthPx
+          ? prev
+          : { ...prev, containerWidthPx }
+      );
+    }
+  }, [containerWidthPx]);
+
+  useEffect(() => {
     let active = true;
     void getPreferences().then((loaded) => {
       if (active) {
         setPrefs(loaded);
+        setLocalWidth(loaded.containerWidthPx);
       }
     });
+
+    const unsubscribe = onSyncStorageChanged(() => {
+      void getPreferences().then((loaded) => {
+        if (active) {
+          setPrefs(loaded);
+          setLocalWidth(loaded.containerWidthPx);
+        }
+      });
+    });
+
     return () => {
       active = false;
+      unsubscribe();
     };
   }, []);
 
@@ -49,8 +83,13 @@ export function SettingsView({
     setIsSaving(true);
     setSaveMessage(null);
     try {
-      const saved = await updatePreferences(prefs);
+      const saved = await updatePreferences({
+        ...prefs,
+        containerWidthPx: localWidth,
+      });
       setPrefs(saved);
+      setLocalWidth(saved.containerWidthPx);
+      onContainerWidthChange?.(saved.containerWidthPx, false);
       setSaveMessage({
         isError: false,
         text: 'Preferences saved to synced browser storage.',
@@ -142,7 +181,7 @@ export function SettingsView({
           storage.
         </p>
 
-        <form className="mt-4 max-w-md space-y-4" onSubmit={(e) => void handleSavePreferences(e)}>
+        <form className="mt-4 max-w-xl space-y-4" onSubmit={(e) => void handleSavePreferences(e)}>
           <div>
             <label
               htmlFor="sync-interval-minutes"
@@ -195,6 +234,76 @@ export function SettingsView({
               aria-describedby="target-section-hint"
               className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-2xs"
             />
+          </div>
+
+          <div>
+            <label
+              htmlFor="container-width-range"
+              className="block text-sm font-medium text-slate-700"
+            >
+              Dashboard Width
+            </label>
+            <span id="container-width-hint" className="mt-0.5 block text-xs text-slate-500">
+              Set the maximum container width. You can also drag the subtle edge dividers on either
+              side of the main container ({MIN_CONTAINER_WIDTH_PX}px – {MAX_CONTAINER_WIDTH_PX}px).
+            </span>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <input
+                id="container-width-range"
+                type="range"
+                min={MIN_CONTAINER_WIDTH_PX}
+                max={MAX_CONTAINER_WIDTH_PX}
+                step={20}
+                aria-describedby="container-width-hint"
+                value={localWidth}
+                onChange={(e) => {
+                  const next = parseInt(e.target.value, 10) || DEFAULT_CONTAINER_WIDTH_PX;
+                  setLocalWidth(next);
+                  setPrefs((prev) => ({
+                    ...prev,
+                    containerWidthPx: next,
+                  }));
+                }}
+                onPointerUp={() => onContainerWidthChange?.(localWidth, true)}
+                onMouseUp={() => onContainerWidthChange?.(localWidth, true)}
+                onTouchEnd={() => onContainerWidthChange?.(localWidth, true)}
+                onKeyUp={(e) => {
+                  if (
+                    [
+                      'ArrowLeft',
+                      'ArrowRight',
+                      'ArrowUp',
+                      'ArrowDown',
+                      'PageUp',
+                      'PageDown',
+                      'Home',
+                      'End',
+                    ].includes(e.key)
+                  ) {
+                    onContainerWidthChange?.(localWidth, true);
+                  }
+                }}
+                style={{ width: '220px', cursor: 'pointer' }}
+                className="accent-brand"
+              />
+              <span className="min-w-[4.25rem] text-right font-mono text-sm font-semibold text-slate-800">
+                {localWidth}px
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setLocalWidth(DEFAULT_CONTAINER_WIDTH_PX);
+                  setPrefs((prev) => ({
+                    ...prev,
+                    containerWidthPx: DEFAULT_CONTAINER_WIDTH_PX,
+                  }));
+                  onContainerWidthChange?.(DEFAULT_CONTAINER_WIDTH_PX, true);
+                }}
+                className="rounded-md border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100"
+              >
+                Reset to Default ({DEFAULT_CONTAINER_WIDTH_PX}px)
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center gap-2.5">

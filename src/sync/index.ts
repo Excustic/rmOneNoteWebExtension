@@ -7,6 +7,7 @@ export {
 export {
   cancelSyncItem,
   isSyncCycleRunning,
+  queueManualSyncItems,
   retryFailedPages,
   runSyncCycle,
 } from './syncEngine';

@@ -9,6 +9,7 @@ import { setWhitelist, updatePreferences } from '../storage/preferences';
 import {
   AUTO_SYNC_ALARM_NAME,
   cancelSyncItem,
+  queueManualSyncItems,
   registerAutoSyncAlarmListeners,
   retryFailedPages,
   runSyncCycle,
@@ -343,5 +344,60 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
     expect(await ext.alarms.get(AUTO_SYNC_ALARM_NAME)).toBeUndefined();
 
     dispose();
+  });
+
+  it('queues manual sync items by documentId or page key even when already Uploaded or outside whitelist', async () => {
+    await testDb.pages.bulkPut([
+      {
+        documentId: DOC_ID,
+        pageId: PAGE_1_ID,
+        pageNumber: '1',
+        title: 'Page 1',
+        virtualPath: 'Academy/Calculus 1/Page 1',
+        fileSizeBytes: 512,
+        lastModified: new Date().toISOString(),
+        contentHash: 'h1',
+        status: 'Uploaded',
+        lastSyncTime: '2026-11-06T12:00:00.000Z',
+        oneNotePageId: 'on-1',
+        oneNotePageUrl: 'https://onenote.example/on-1',
+        retryCount: 0,
+        lastError: null,
+      },
+      {
+        documentId: DOC_ID,
+        pageId: PAGE_2_ID,
+        pageNumber: '2',
+        title: 'Page 2',
+        virtualPath: 'Academy/Calculus 1/Page 2',
+        fileSizeBytes: 512,
+        lastModified: new Date().toISOString(),
+        contentHash: 'h2',
+        status: 'Skipped',
+        lastSyncTime: null,
+        oneNotePageId: null,
+        oneNotePageUrl: null,
+        retryCount: 0,
+        lastError: null,
+      },
+    ]);
+
+    // Queue a single page manually
+    const queuedSingle = await queueManualSyncItems({
+      pages: [{ documentId: DOC_ID, pageId: PAGE_2_ID }],
+      database: testDb,
+    });
+    expect(queuedSingle).toBe(1);
+    expect((await getPage(DOC_ID, PAGE_2_ID, testDb))?.status).toBe('Pending');
+    expect((await getPage(DOC_ID, PAGE_1_ID, testDb))?.status).toBe('Uploaded');
+
+    // Queue an entire document manually (re-queues Uploaded pages too)
+    const queuedDoc = await queueManualSyncItems({
+      documentIds: [DOC_ID],
+      database: testDb,
+    });
+    expect(queuedDoc).toBe(2);
+    expect((await getPage(DOC_ID, PAGE_1_ID, testDb))?.status).toBe('Pending');
+    expect((await getPage(DOC_ID, PAGE_2_ID, testDb))?.status).toBe('Pending');
   });
 });

@@ -61,12 +61,17 @@ describe('UserPreferences, chunked Whitelists, and Cross-PC Rolling Sync Ledger'
       targetSection: '   ',
       maxRetries: 99,
       autoSync: false,
+      containerWidthPx: 400,
     });
 
     expect(saved.syncIntervalMinutes).toBe(1);
     expect(saved.targetSection).toBe('Documents');
     expect(saved.maxRetries).toBe(10);
     expect(saved.autoSync).toBe(false);
+    expect(saved.containerWidthPx).toBe(760);
+
+    const wide = await updatePreferences({ containerWidthPx: 5000 });
+    expect(wide.containerWidthPx).toBe(2400);
   });
 
   it('packs 700+ whitelist UUIDs across 8KB-safe chunks and cleans up stale chunks when shrunk', async () => {

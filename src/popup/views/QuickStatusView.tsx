@@ -72,17 +72,17 @@ export function QuickStatusView({
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={() => onOpenRoute('sync-status')}
+            onClick={() => onOpenRoute('sync-control')}
             className="min-h-8 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100"
           >
-            Sync Queue
+            Sync Control
           </button>
           <button
             type="button"
-            onClick={() => onOpenRoute('files')}
+            onClick={() => onOpenRoute('dashboard')}
             className="min-h-8 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100"
           >
-            Select Folders
+            Recent Activity
           </button>
         </div>
       </div>

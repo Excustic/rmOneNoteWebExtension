@@ -28,6 +28,7 @@ import {
 } from '../storage/syncLedger';
 import {
   cancelSyncItem,
+  queueManualSyncItems,
   registerAutoSyncAlarmListeners,
   retryFailedPages,
   runSyncCycle,
@@ -54,6 +55,7 @@ const VALID_REQUEST_TYPES = new Set<RuntimeRequest['type']>([
   'TRIGGER_MANUAL_SYNC',
   'CANCEL_SYNC_ITEM',
   'RETRY_FAILED_PAGES',
+  'MANUAL_SYNC_ITEMS',
   'SYNC_REMARKABLE_TREE',
   'PAIR_REMARKABLE',
   'DISCONNECT_REMARKABLE',
@@ -321,6 +323,28 @@ ext.runtime.onMessage.addListener(
               ok: true,
               state,
               detail: `Re-queued ${resetCount} page${resetCount === 1 ? '' : 's'} for sync.`,
+            };
+          }
+          case 'MANUAL_SYNC_ITEMS': {
+            const queuedCount = await queueManualSyncItems({
+              documentIds: message.documentIds,
+              pages: message.pages,
+            });
+            if (message.runNow !== false && queuedCount > 0) {
+              const { state, summary } = await executeManagedSyncCycle('manual');
+              return {
+                ok: true,
+                state,
+                syncSummary: summary,
+                treeSync: summary.treeSync ?? undefined,
+                detail: `Synced ${queuedCount} queued page${queuedCount === 1 ? '' : 's'} (${summary.uploadedCount} uploaded, ${summary.failedCount} failed).`,
+              };
+            }
+            const state = await readSyncOverview();
+            return {
+              ok: true,
+              state,
+              detail: `Queued ${queuedCount} page${queuedCount === 1 ? '' : 's'} for synchronization.`,
             };
           }
           case 'TRIGGER_MANUAL_SYNC': {

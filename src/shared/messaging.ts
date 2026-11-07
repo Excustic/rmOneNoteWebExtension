@@ -40,6 +40,12 @@ export type RuntimeRequest =
   | { type: 'TRIGGER_MANUAL_SYNC'; forceTreeRefresh?: boolean }
   | { type: 'CANCEL_SYNC_ITEM'; documentId: string; pageId: string }
   | { type: 'RETRY_FAILED_PAGES'; documentId?: string; pageId?: string; runNow?: boolean }
+  | {
+      type: 'MANUAL_SYNC_ITEMS';
+      documentIds?: string[];
+      pages?: Array<{ documentId: string; pageId: string }>;
+      runNow?: boolean;
+    }
   | { type: 'SYNC_REMARKABLE_TREE'; forceRefresh?: boolean }
   | { type: 'PAIR_REMARKABLE'; code: string }
   | { type: 'DISCONNECT_REMARKABLE' }
