@@ -308,6 +308,37 @@ export function SettingsView({
             </p>
           </div>
 
+          <div data-tour="settings-sync-concurrency">
+            <label
+              htmlFor="sync-concurrency-input"
+              className="block text-sm font-medium text-slate-700"
+            >
+              Concurrent upload workers
+            </label>
+            <span id="sync-concurrency-hint" className="mt-0.5 block text-xs text-slate-500">
+              Number of simultaneous page conversion and upload workers (range: 1 – 5, default: 3).
+              Setting to 1 processes pages strictly sequentially one by one.
+            </span>
+            <input
+              id="sync-concurrency-input"
+              name="syncConcurrency"
+              type="number"
+              min={1}
+              max={5}
+              step={1}
+              required
+              value={prefs.syncConcurrency}
+              onChange={(e) =>
+                setPrefs((prev) => ({
+                  ...prev,
+                  syncConcurrency: Number(e.target.value) || 3,
+                }))
+              }
+              aria-describedby="sync-concurrency-hint"
+              className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-2xs"
+            />
+          </div>
+
           <div data-tour="settings-width-control">
             <label
               htmlFor="container-width-range"

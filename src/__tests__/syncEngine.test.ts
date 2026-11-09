@@ -11,6 +11,7 @@ import {
   AUTO_SYNC_ALARM_NAME,
   cancelSyncItem,
   queueManualSyncItems,
+  recoverDeletedPage,
   registerAutoSyncAlarmListeners,
   retryFailedPages,
   runSyncCycle,
@@ -756,5 +757,178 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
     const updated = await getPage(DOC_ID, PAGE_1_ID, testDb);
     expect(updated?.status).toBe('Uploaded');
     expect(updated?.titleRenameOnly).toBe(false);
+  });
+
+  it('recovers a deleted page to a dedicated (Recovered) section with revision disambiguation', async () => {
+    let createdSectionName = '';
+    let uploadedTitle = '';
+    const minimalBytes = buildMinimalRmV3Bytes();
+
+    const mockFetch: typeof fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = (init?.method ?? 'GET').toUpperCase();
+
+      if (url.includes('internal.cloud.remarkable.com/sync/v3/files/')) {
+        return new Response(minimalBytes as unknown as BodyInit, { status: 200 });
+      }
+
+      const parsedUrl = new URL(url);
+      const path = parsedUrl.pathname.replace(/^\/v1\.0\/me\/onenote/, '');
+
+      if (path.startsWith('/notebooks') && !path.includes('/sections')) {
+        return new Response(
+          JSON.stringify({
+            value: [
+              {
+                id: 'nb-1',
+                displayName: 'rm_Notebook',
+                sections: [{ id: 'sec-1', displayName: 'Notebook' }],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (path === '/notebooks/nb-1/sections' && method === 'POST') {
+        const body = JSON.parse(String(init?.body ?? '{}'));
+        createdSectionName = body.displayName;
+        return new Response(
+          JSON.stringify({ id: 'sec-recovered', displayName: body.displayName }),
+          { status: 201 },
+        );
+      }
+      if (path === '/sections/sec-recovered/pages' && method === 'POST') {
+        const bodyBytes =
+          init?.body instanceof Uint8Array
+            ? init.body
+            : init?.body instanceof ArrayBuffer
+              ? new Uint8Array(init.body)
+              : new TextEncoder().encode(String(init?.body ?? ''));
+        const bodyStr = new TextDecoder().decode(bodyBytes);
+        const titleMatch = bodyStr.match(/<title>([^<]+)<\/title>/);
+        if (titleMatch) {
+          uploadedTitle = titleMatch[1];
+        }
+        return new Response(
+          JSON.stringify({
+            id: 'on-pg-recovered',
+            title: uploadedTitle,
+            links: { oneNoteWebUrl: { href: 'https://onenote.com/test-recovered-page' } },
+          }),
+          { status: 201 },
+        );
+      }
+      if (path === '/pages/on-pg-recovered' && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            id: 'on-pg-recovered',
+            title: uploadedTitle,
+            links: { oneNoteWebUrl: { href: 'https://onenote.com/test-recovered-page' } },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    };
+
+    // Seed 2 pages with the same page number: one active, one deleted (to test rev disambiguation)
+    await savePage(
+      {
+        documentId: DOC_ID,
+        pageId: PAGE_1_ID,
+        pageNumber: '2',
+        title: 'Page 2',
+        virtualPath: 'Notebook/Page 2',
+        fileSizeBytes: 100,
+        lastModified: '2026-11-06T10:00:00.000Z',
+        contentHash: 'hash-del',
+        status: 'Deleted',
+        lastSyncTime: null,
+        oneNotePageId: null,
+        oneNotePageUrl: null,
+        retryCount: 0,
+        lastError: null,
+      },
+      testDb,
+    );
+    await savePage(
+      {
+        documentId: DOC_ID,
+        pageId: PAGE_2_ID,
+        pageNumber: '2',
+        title: 'Page 2',
+        virtualPath: 'Notebook/Page 2',
+        fileSizeBytes: 120,
+        lastModified: '2026-11-06T12:00:00.000Z',
+        contentHash: 'hash-active',
+        status: 'Uploaded',
+        lastSyncTime: '2026-11-06T12:05:00.000Z',
+        oneNotePageId: 'on-pg-2',
+        oneNotePageUrl: 'https://onenote.com/test-active-page',
+        retryCount: 0,
+        lastError: null,
+      },
+      testDb,
+    );
+
+    const result = await recoverDeletedPage(DOC_ID, PAGE_1_ID, {
+      database: testDb,
+      fetchImpl: mockFetch,
+      phantomLinkPollDelaysMs: [0],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.oneNoteUrl).toBe('https://onenote.com/test-recovered-page');
+    expect(createdSectionName).toBe('Notebook (Recovered)');
+    expect(uploadedTitle).toBe('Page 2 (rev 1)');
+
+    const updated = await getPage(DOC_ID, PAGE_1_ID, testDb);
+    expect(updated?.status).toBe('Deleted');
+    expect(updated?.oneNotePageId).toBe('on-pg-recovered');
+    expect(updated?.oneNotePageUrl).toBe('https://onenote.com/test-recovered-page');
+  });
+
+  it('marks deleted page as expired when reMarkable Cloud returns 404', async () => {
+    const mockFetch: typeof fetch = async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('internal.cloud.remarkable.com/sync/v3/files/')) {
+        return new Response('Not Found', { status: 404 });
+      }
+      return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    };
+
+    await savePage(
+      {
+        documentId: DOC_ID,
+        pageId: PAGE_1_ID,
+        pageNumber: '5',
+        title: 'Page 5',
+        virtualPath: 'Notebook/Page 5',
+        fileSizeBytes: 50,
+        lastModified: '2026-11-06T10:00:00.000Z',
+        contentHash: 'hash-pruned',
+        status: 'Deleted',
+        lastSyncTime: null,
+        oneNotePageId: null,
+        oneNotePageUrl: null,
+        retryCount: 0,
+        lastError: null,
+      },
+      testDb,
+    );
+
+    const result = await recoverDeletedPage(DOC_ID, PAGE_1_ID, {
+      database: testDb,
+      fetchImpl: mockFetch,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('expired');
+
+    const updated = await getPage(DOC_ID, PAGE_1_ID, testDb);
+    expect(updated?.status).toBe('Deleted');
+    expect(updated?.lastError).toBe(
+      'Page content has expired and is no longer available on reMarkable Cloud.',
+    );
   });
 });

@@ -39,6 +39,11 @@ export interface UserPreferences {
    * - 'preserve': Keep OneNote static/append-only; never delete OneNote pages and append (1), (2) on page title conflicts.
    */
   pageSyncStrategy: PageSyncStrategy;
+  /**
+   * Number of concurrent upload workers (1 to 5).
+   * Default 3. Setting to 1 uploads pages strictly sequentially.
+   */
+  syncConcurrency: number;
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
@@ -52,6 +57,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   maxSectionPagesQueryLimit: 300,
   syncUnannotatedPdfPages: false,
   pageSyncStrategy: 'mirror',
+  syncConcurrency: 3,
 };
 
 export interface SyncWhitelist {
@@ -127,6 +133,12 @@ function normalizePreferences(raw: Partial<UserPreferences> | undefined): UserPr
         : DEFAULT_USER_PREFERENCES.syncUnannotatedPdfPages,
     pageSyncStrategy:
       raw.pageSyncStrategy === 'preserve' ? 'preserve' : 'mirror',
+    syncConcurrency: clampInt(
+      raw.syncConcurrency,
+      DEFAULT_USER_PREFERENCES.syncConcurrency,
+      1,
+      5,
+    ),
   };
 }
 

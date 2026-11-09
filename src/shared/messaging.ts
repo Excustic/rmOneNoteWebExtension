@@ -52,7 +52,8 @@ export type RuntimeRequest =
   | { type: 'VERIFY_REMARKABLE_SESSION' }
   | { type: 'SIGN_IN_MICROSOFT'; clientId?: string; tenantId?: string }
   | { type: 'SIGN_OUT_MICROSOFT' }
-  | { type: 'VERIFY_MICROSOFT_SESSION' };
+  | { type: 'VERIFY_MICROSOFT_SESSION' }
+  | { type: 'RECOVER_DELETED_PAGE'; documentId: string; pageId: string };
 
 export type RuntimeResponse =
   | {

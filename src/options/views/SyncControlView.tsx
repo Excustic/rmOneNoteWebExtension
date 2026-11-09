@@ -539,6 +539,8 @@ export function SyncControlView({
 
   const [inspectedDocId, setInspectedDocId] = useState<string | null>(null);
   const [selectedPageIds, setSelectedPageIds] = useState<Set<string>>(() => new Set());
+  const [showDeletedPages, setShowDeletedPages] = useState<boolean>(false);
+  const [recoveringPageId, setRecoveringPageId] = useState<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -669,6 +671,41 @@ export function SyncControlView({
     [pagesByDocId, inspectedDocId],
   );
 
+  const activePages = useMemo(
+    () => inspectedDocPages.filter((p) => p.status !== 'Deleted'),
+    [inspectedDocPages],
+  );
+
+  const deletedPages = useMemo(
+    () => inspectedDocPages.filter((p) => p.status === 'Deleted'),
+    [inspectedDocPages],
+  );
+
+  const deletedPageRevLabels = useMemo(() => {
+    const revMap = new Map<string, string>();
+    const byNumber = new Map<string, PageRecord[]>();
+    for (const page of inspectedDocPages) {
+      const list = byNumber.get(page.pageNumber) ?? [];
+      list.push(page);
+      byNumber.set(page.pageNumber, list);
+    }
+
+    for (const list of byNumber.values()) {
+      const deletedInGroup = list.filter((p) => p.status === 'Deleted');
+      if (deletedInGroup.length === 0) continue;
+
+      if (list.length > 1) {
+        deletedInGroup.sort((a, b) => a.lastModified.localeCompare(b.lastModified));
+        deletedInGroup.forEach((page, idx) => {
+          revMap.set(page.pageId, ` (rev ${idx + 1})`);
+        });
+      } else {
+        revMap.set(deletedInGroup[0].pageId, '');
+      }
+    }
+    return revMap;
+  }, [inspectedDocPages]);
+
   const inspectedDocRollup = useMemo(
     () => (inspectedDocId ? (rollupMap.get(inspectedDocId) ?? EMPTY_ROLLUP) : EMPTY_ROLLUP),
     [rollupMap, inspectedDocId],
@@ -680,8 +717,10 @@ export function SyncControlView({
         if (prev === docNode.id) {
           return null;
         }
+        setShowDeletedPages(false);
         const docPages = pagesByDocId.get(docNode.id) ?? [];
-        setSelectedPageIds(new Set(docPages.map((p) => p.pageId)));
+        const nonDeletedPages = docPages.filter((p) => p.status !== 'Deleted');
+        setSelectedPageIds(new Set(nonDeletedPages.map((p) => p.pageId)));
         return docNode.id;
       });
     },
@@ -939,6 +978,43 @@ export function SyncControlView({
       }
     } catch (err) {
       console.error('[rmOneNote] Failed to cancel sync item:', err);
+    }
+  }
+
+  async function handleRecoverPage(documentId: string, pageId: string) {
+    const permissionPromise = isDemo
+      ? Promise.resolve(true)
+      : requestHostOriginsFromGesture([
+          ...REMARKABLE_HOST_ORIGINS,
+          ...MICROSOFT_GRAPH_ORIGINS,
+        ]);
+    setRecoveringPageId(pageId);
+    setFeedback(null);
+
+    try {
+      await permissionPromise;
+      const response = (await sendMessage({
+        type: 'RECOVER_DELETED_PAGE',
+        documentId,
+        pageId,
+      })) as RuntimeResponse | undefined;
+
+      if (!response?.ok) {
+        throw new Error(response?.error ?? 'Failed to recover deleted page.');
+      }
+
+      onSyncStateChanged(response.state);
+      setFeedback({
+        isError: false,
+        text: response.detail ?? 'Recovered deleted page to OneNote.',
+      });
+    } catch (err) {
+      setFeedback({
+        isError: true,
+        text: err instanceof Error ? err.message : 'Failed to recover deleted page.',
+      });
+    } finally {
+      setRecoveringPageId(null);
     }
   }
 
@@ -1272,7 +1348,7 @@ export function SyncControlView({
                     <button
                       type="button"
                       onClick={() =>
-                        setSelectedPageIds(new Set(inspectedDocPages.map((p) => p.pageId)))
+                        setSelectedPageIds(new Set(activePages.map((p) => p.pageId)))
                       }
                       className="min-h-7 rounded border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100"
                     >
@@ -1315,124 +1391,259 @@ export function SyncControlView({
                       fetch its pages.
                     </div>
                   ) : (
-                    inspectedDocPages.map((page) => {
-                      const isPageChecked = selectedPageIds.has(page.pageId);
-                      const isActivelySyncing = isPageActivelySyncing(page.status);
-                      const pageCbId = `${baseId}-pgcb-${page.pageId}`;
+                    <>
+                      {activePages.length === 0 ? (
+                        <div className="py-6 text-center text-xs text-slate-500">
+                          {deletedPages.length > 0
+                            ? 'All pages in this document have been deleted on your tablet.'
+                            : 'No active pages found in this document.'}
+                        </div>
+                      ) : (
+                        activePages.map((page) => {
+                          const isPageChecked = selectedPageIds.has(page.pageId);
+                          const isActivelySyncing = isPageActivelySyncing(page.status);
+                          const pageCbId = `${baseId}-pgcb-${page.pageId}`;
 
-                      return (
-                        <div
-                          key={page.pageId}
-                          className="flex items-start justify-between gap-3 rounded-md bg-white p-3 first:mt-0 mt-2 border border-slate-200/80 shadow-2xs"
-                        >
-                          <div className="flex min-w-0 flex-1 items-start gap-2.5">
-                            <input
-                              id={pageCbId}
-                              type="checkbox"
-                              checked={isPageChecked}
-                              onChange={() => handleTogglePageCheckbox(page.pageId)}
-                              aria-label={`Select Page ${page.pageNumber}`}
-                              className="checkbox-custom mt-0.5 text-sm"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <label
-                                  htmlFor={pageCbId}
-                                  className="cursor-pointer text-xs font-semibold text-slate-900"
-                                >
-                                  Page {page.pageNumber}
-                                </label>
-                                <SyncStatusBadge status={page.status} />
+                          return (
+                            <div
+                              key={page.pageId}
+                              className="flex items-start justify-between gap-3 rounded-md bg-white p-3 first:mt-0 mt-2 border border-slate-200/80 shadow-2xs"
+                            >
+                              <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                                <input
+                                  id={pageCbId}
+                                  type="checkbox"
+                                  checked={isPageChecked}
+                                  onChange={() => handleTogglePageCheckbox(page.pageId)}
+                                  aria-label={`Select Page ${page.pageNumber}`}
+                                  className="checkbox-custom mt-0.5 text-sm"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <label
+                                      htmlFor={pageCbId}
+                                      className="cursor-pointer text-xs font-semibold text-slate-900"
+                                    >
+                                      Page {page.pageNumber}
+                                    </label>
+                                    <SyncStatusBadge status={page.status} />
 
-                                {page.originalPageNumber &&
-                                page.originalPageNumber !== page.pageNumber ? (
-                                  <span
-                                    className="inline-flex items-center rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800"
-                                    title={`Page was reordered on tablet: was Page ${page.originalPageNumber}, now Page ${page.pageNumber}`}
-                                  >
-                                    Moved: Page {page.originalPageNumber} &rarr; Page {page.pageNumber}
-                                  </span>
-                                ) : null}
+                                    {page.originalPageNumber &&
+                                    page.originalPageNumber !== page.pageNumber ? (
+                                      <span
+                                        className="inline-flex items-center rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800"
+                                        title={`Page was reordered on tablet: was Page ${page.originalPageNumber}, now Page ${page.pageNumber}`}
+                                      >
+                                        Moved: Page {page.originalPageNumber} &rarr; Page {page.pageNumber}
+                                      </span>
+                                    ) : null}
 
-                                {page.status === 'Deleted' ? (
-                                  <span
-                                    className="inline-flex items-center rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-800"
-                                    title="This page was deleted on your reMarkable tablet"
-                                  >
-                                    Deleted on tablet
-                                  </span>
-                                ) : null}
+                                    {page.lastSyncTime &&
+                                    Date.parse(page.lastModified) > Date.parse(page.lastSyncTime) + 1000 ? (
+                                      <span
+                                        className="inline-flex items-center rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
+                                        title="This page was modified on your reMarkable tablet after the last upload to OneNote"
+                                      >
+                                        Out of date
+                                      </span>
+                                    ) : null}
+                                  </div>
 
-                                {page.lastSyncTime &&
-                                Date.parse(page.lastModified) > Date.parse(page.lastSyncTime) + 1000 ? (
-                                  <span
-                                    className="inline-flex items-center rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
-                                    title="This page was modified on your reMarkable tablet after the last upload to OneNote"
-                                  >
-                                    Out of date
-                                  </span>
-                                ) : null}
+                                  <p className="mt-1 text-[11px] text-slate-500">
+                                    {page.lastSyncTime
+                                      ? `Last synced: ${formatSyncTimestamp(page.lastSyncTime)}`
+                                      : `Modified: ${formatSyncTimestamp(page.lastModified)}`}{' '}
+                                    |{' '}
+                                    {page.fileSizeBytes === 0
+                                      ? '0 KB (Blank / No strokes)'
+                                      : formatFileSize(page.fileSizeBytes)}
+                                  </p>
+
+                                  {page.lastError ? (
+                                    <p className="mt-1 text-[11px] font-medium text-rose-600">
+                                      {page.lastError}
+                                    </p>
+                                  ) : null}
+
+                                  {page.oneNotePageUrl ? (
+                                    <a
+                                      href={page.oneNotePageUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="mt-1.5 inline-block text-xs font-medium text-brand underline underline-offset-2 hover:text-brand-hover"
+                                    >
+                                      Open in OneNote
+                                    </a>
+                                  ) : null}
+                                </div>
                               </div>
 
-                              <p className="mt-1 text-[11px] text-slate-500">
-                                {page.lastSyncTime
-                                  ? `Last synced: ${formatSyncTimestamp(page.lastSyncTime)}`
-                                  : `Modified: ${formatSyncTimestamp(page.lastModified)}`}{' '}
-                                |{' '}
-                                {page.fileSizeBytes === 0
-                                  ? '0 KB (Blank / No strokes)'
-                                  : formatFileSize(page.fileSizeBytes)}
-                              </p>
-
-                              {page.lastError ? (
-                                <p className="mt-1 text-[11px] font-medium text-rose-600">
-                                  {page.lastError}
-                                </p>
-                              ) : null}
-
-                              {page.oneNotePageUrl ? (
-                                <a
-                                  href={page.oneNotePageUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="mt-1.5 inline-block text-xs font-medium text-brand underline underline-offset-2 hover:text-brand-hover"
-                                >
-                                  Open in OneNote
-                                </a>
-                              ) : null}
+                              <div className="shrink-0">
+                                {isActivelySyncing ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void handleCancelPageSync(page.documentId, page.pageId)
+                                    }
+                                    className="min-h-7 rounded border border-rose-200 bg-white px-2.5 py-1 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    disabled={isEngineBusy || !overview.isConfigured}
+                                    onClick={() =>
+                                      void handleManualSyncSpecificPages([
+                                        { documentId: page.documentId, pageId: page.pageId },
+                                      ])
+                                    }
+                                    className="inline-flex min-h-7 items-center gap-1 rounded border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    <LegacyIcon name="syncCycle" className="h-3 w-3 text-slate-500" />
+                                    <span>Sync</span>
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                          </div>
+                          );
+                        })
+                      )}
 
-                          <div className="shrink-0">
-                            {isActivelySyncing ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void handleCancelPageSync(page.documentId, page.pageId)
-                                }
-                                className="min-h-7 rounded border border-rose-200 bg-white px-2.5 py-1 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-50"
+                      {/* Collapsible Deleted Pages Section */}
+                      {deletedPages.length > 0 ? (
+                        <div className="mt-4 border-t border-slate-200/80 pt-3">
+                          <button
+                            type="button"
+                            onClick={() => setShowDeletedPages((prev) => !prev)}
+                            className="flex w-full items-center justify-between rounded px-1.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200/50 hover:text-slate-900"
+                            aria-expanded={showDeletedPages}
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <span
+                                className={`inline-block text-[10px] transition-transform ${
+                                  showDeletedPages ? 'rotate-90' : ''
+                                }`}
+                                aria-hidden="true"
                               >
-                                Cancel
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                disabled={isEngineBusy || !overview.isConfigured}
-                                onClick={() =>
-                                  void handleManualSyncSpecificPages([
-                                    { documentId: page.documentId, pageId: page.pageId },
-                                  ])
-                                }
-                                className="inline-flex min-h-7 items-center gap-1 rounded border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <LegacyIcon name="syncCycle" className="h-3 w-3 text-slate-500" />
-                                <span>Sync</span>
-                              </button>
-                            )}
-                          </div>
+                                &rsaquo;
+                              </span>
+                              <span>Deleted Pages ({deletedPages.length})</span>
+                            </span>
+                            <span className="text-[11px] font-normal text-slate-400">
+                              {showDeletedPages ? 'Hide' : 'Show'}
+                            </span>
+                          </button>
+
+                          {showDeletedPages ? (
+                            <div className="mt-2 space-y-2">
+                              {deletedPages.map((page) => {
+                                const revSuffix = deletedPageRevLabels.get(page.pageId) ?? '';
+                                const isRecovering = recoveringPageId === page.pageId;
+                                const isExpired = Boolean(
+                                  page.lastError &&
+                                    (page.lastError.includes('expired') ||
+                                      page.lastError.toLowerCase().includes('not found') ||
+                                      page.lastError.includes('404')),
+                                );
+
+                                return (
+                                  <div
+                                    key={page.pageId}
+                                    className="flex items-start justify-between gap-3 rounded-md border border-dashed border-rose-200 bg-rose-50/40 p-3 shadow-2xs"
+                                  >
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-xs font-semibold text-slate-700">
+                                          Page {page.pageNumber}{revSuffix}
+                                        </span>
+                                        <SyncStatusBadge status="Deleted" />
+                                        <span
+                                          className="inline-flex items-center rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-800"
+                                          title="This page was deleted on your reMarkable tablet"
+                                        >
+                                          Deleted on tablet
+                                        </span>
+                                        {page.lastSyncTime &&
+                                        Date.parse(page.lastModified) >
+                                          Date.parse(page.lastSyncTime) + 1000 ? (
+                                          <span
+                                            className="inline-flex items-center rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
+                                            title="This page was modified on your reMarkable tablet after the last upload to OneNote"
+                                          >
+                                            Out of date
+                                          </span>
+                                        ) : null}
+                                      </div>
+
+                                      <p className="mt-1 text-[11px] text-slate-500">
+                                        {page.lastSyncTime
+                                          ? `Last synced: ${formatSyncTimestamp(page.lastSyncTime)}`
+                                          : `Deleted: ${formatSyncTimestamp(page.lastModified)}`}{' '}
+                                        |{' '}
+                                        {page.fileSizeBytes === 0
+                                          ? '0 KB (Blank / No strokes)'
+                                          : formatFileSize(page.fileSizeBytes)}
+                                      </p>
+
+                                      {page.lastError ? (
+                                        <p className="mt-1 text-[11px] font-medium text-rose-600">
+                                          {page.lastError}
+                                        </p>
+                                      ) : null}
+
+                                      {page.oneNotePageUrl ? (
+                                        <a
+                                          href={page.oneNotePageUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="mt-1.5 inline-block text-xs font-medium text-brand underline underline-offset-2 hover:text-brand-hover"
+                                        >
+                                          Open in OneNote
+                                        </a>
+                                      ) : null}
+                                    </div>
+
+                                    <div className="shrink-0">
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          isEngineBusy ||
+                                          !overview.isConfigured ||
+                                          isRecovering ||
+                                          isExpired
+                                        }
+                                        onClick={() =>
+                                          void handleRecoverPage(page.documentId, page.pageId)
+                                        }
+                                        title={
+                                          isExpired
+                                            ? 'Page content has expired on reMarkable Cloud and cannot be recovered'
+                                            : 'Upload to dedicated (Recovered) OneNote section'
+                                        }
+                                        className="inline-flex min-h-7 items-center gap-1 rounded border border-rose-300 bg-white px-2.5 py-1 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                      >
+                                        {isRecovering ? (
+                                          <span>Recovering...</span>
+                                        ) : (
+                                          <>
+                                            <LegacyIcon
+                                              name="syncCycle"
+                                              className="h-3 w-3 text-rose-500"
+                                            />
+                                            <span>Recover</span>
+                                          </>
+                                        )}
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
                         </div>
-                      );
-                    })
+                      ) : null}
+                    </>
                   )}
                 </div>
               </div>

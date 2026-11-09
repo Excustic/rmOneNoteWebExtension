@@ -62,6 +62,7 @@ describe('UserPreferences, chunked Whitelists, and Cross-PC Rolling Sync Ledger'
       maxRetries: 99,
       autoSync: false,
       containerWidthPx: 400,
+      syncConcurrency: 10,
     });
 
     expect(saved.syncIntervalMinutes).toBe(1);
@@ -69,6 +70,10 @@ describe('UserPreferences, chunked Whitelists, and Cross-PC Rolling Sync Ledger'
     expect(saved.maxRetries).toBe(10);
     expect(saved.autoSync).toBe(false);
     expect(saved.containerWidthPx).toBe(760);
+    expect(saved.syncConcurrency).toBe(5);
+
+    const minWorkers = await updatePreferences({ syncConcurrency: 0 });
+    expect(minWorkers.syncConcurrency).toBe(1);
 
     const wide = await updatePreferences({ containerWidthPx: 5000 });
     expect(wide.containerWidthPx).toBe(2400);

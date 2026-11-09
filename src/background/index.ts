@@ -29,6 +29,7 @@ import {
 import {
   cancelSyncItem,
   queueManualSyncItems,
+  recoverDeletedPage,
   registerAutoSyncAlarmListeners,
   retryFailedPages,
   runSyncCycle,
@@ -345,6 +346,21 @@ ext.runtime.onMessage.addListener(
               ok: true,
               state,
               detail: `Queued ${queuedCount} page${queuedCount === 1 ? '' : 's'} for synchronization.`,
+            };
+          }
+          case 'RECOVER_DELETED_PAGE': {
+            const recovery = await recoverDeletedPage(message.documentId, message.pageId);
+            const state = await readSyncOverview();
+            if (!recovery.ok) {
+              return {
+                ok: false,
+                error: recovery.error ?? 'Failed to recover deleted page.',
+              };
+            }
+            return {
+              ok: true,
+              state,
+              detail: 'Recovered deleted page to dedicated (Recovered) OneNote section.',
             };
           }
           case 'TRIGGER_MANUAL_SYNC': {

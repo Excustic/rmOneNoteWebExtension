@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Per-section page creation queue mutex (`sectionPagesMutex` in `syncEngine.ts`): enforces strict ascending chronological creation order on Microsoft Graph so pages are created in natural order (`Page 1`, `Page 2`, `Page 3`) without race conditions caused by smaller pages finishing faster than larger pages, while keeping single-page and distinct-notebook sync non-blocking.
+- Configurable concurrent upload workers (`syncConcurrency`: range 1 to 5, default 3) in `UserPreferences` and `SettingsView.tsx`. Setting to 1 processes page conversion and upload workers strictly sequentially.
+- Dedicated deleted pages inspection and recovery workflow in Sync Control (`SyncControlView.tsx`):
+  - Excludes recognized deleted pages from standard selection checkboxes to prevent unintentional sync.
+  - Collapsible, collapsed-by-default `Deleted Pages (n)` container beneath active pages.
+  - Automatic revision disambiguation: labels deleted pages with identical numbers as `Page X (rev 1)`, `Page X (rev 2)` based on modification timestamp order.
+  - "Recover" action button invoking `recoverDeletedPage`: uploads recovered pages directly into a dedicated `<SectionName> (Recovered)` OneNote section with disambiguated revision titles.
+  - reMarkable Cloud retention limit and blob expiration detection: handles 404 errors for pruned CAS blobs, updates page state with clear expiration feedback, and disables pointless recovery retries.
 - Interactive resizable table columns for the 30-day activity table in Dashboard view (`DashboardView.tsx`) with drag handles, double-click reset, minimum column width constraints, and persistent column widths in `localStorage`.
 - Full text hover tooltips (`title` attribute) on truncated text cells across the Dashboard activity table and Sync Control tree nodes / side panel headers.
 - Paginated OneNote section page listing (`OneNoteClient.listPages`): queries in batches of up to 100 (`$top=100`) and follows `@odata.nextLink` until the section is exhausted or a configurable ceiling is reached.

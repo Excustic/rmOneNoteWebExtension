@@ -20,6 +20,7 @@ import {
   OneNoteClient,
   OneNoteDirectoryCache,
   parseVirtualPathToOneNoteTarget,
+  sanitizeOneNoteDisplayName,
   type OneNotePage,
 } from '../onenote';
 import {
@@ -117,14 +118,16 @@ export async function queueManualSyncItems(
       for (const docId of docIdSet) {
         const docPages = await database.pages.where('documentId').equals(docId).toArray();
         for (const page of docPages) {
-          matchedMap.set(buildPageKey(page.documentId, page.pageId), page);
+          if (page.status !== 'Deleted') {
+            matchedMap.set(buildPageKey(page.documentId, page.pageId), page);
+          }
         }
       }
     }
 
     for (const ref of explicitPages) {
       const existing = await database.pages.get([ref.documentId, ref.pageId]);
-      if (existing) {
+      if (existing && existing.status !== 'Deleted') {
         matchedMap.set(buildPageKey(existing.documentId, existing.pageId), existing);
       }
     }
@@ -257,7 +260,7 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
   const {
     trigger = 'manual',
     forceTreeRefresh = false,
-    concurrency = DEFAULT_SYNC_WORKER_CONCURRENCY,
+    concurrency: concurrencyOverride,
     database = db,
     fetchImpl,
     onPhaseChange,
@@ -339,11 +342,14 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
     getPendingPages(1000, database),
   ]);
 
+  const effectiveConcurrency =
+    concurrencyOverride ?? prefs.syncConcurrency ?? DEFAULT_SYNC_WORKER_CONCURRENCY;
+
   const oneNoteClient =
     options.oneNoteClient ??
     new OneNoteClient({
       fetchImpl,
-      maxConcurrentRequests: Math.max(1, concurrency),
+      maxConcurrentRequests: Math.max(1, effectiveConcurrency),
       phantomLinkPollDelaysMs: options.phantomLinkPollDelaysMs,
     });
 
@@ -768,35 +774,46 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
       // another PDF printout on every call, so an edited page is replaced by
       // creating a fresh page first and deleting the stale one afterwards.
       // Deleting last means a failed upload never loses the existing page.
-      const uploadedPageId = await oneNoteClient.uploadInkMlPage({
-        sectionId: resolvedTarget.sectionId,
-        title: effectiveTitle,
-        presentationHtml: converted.presentationHtml,
-        inkmlXml: converted.inkmlXml,
-        backgroundPdfBytes,
-      });
+      //
+      // To guarantee OneNote displays pages in ascending order (Page 1, Page 2, Page 3),
+      // we serialize page creation per target section so faster lightweight pages do
+      // not overtake earlier pages on Microsoft Graph.
+      const uploadedPageId = await sectionPagesMutex.runExclusive(
+        `create:${resolvedTarget.sectionId}`,
+        async () => {
+          const pageId = await oneNoteClient.uploadInkMlPage({
+            sectionId: resolvedTarget.sectionId,
+            title: effectiveTitle,
+            presentationHtml: converted.presentationHtml,
+            inkmlXml: converted.inkmlXml,
+            backgroundPdfBytes,
+          });
 
-      const stalePageIdsToDelete =
-        prefs.pageSyncStrategy === 'mirror'
-          ? matchingExistingList
-              .map((candidate) => candidate.id)
-              .filter((id) => id !== uploadedPageId)
-          : [];
+          const stalePageIdsToDelete =
+            prefs.pageSyncStrategy === 'mirror'
+              ? matchingExistingList
+                  .map((candidate) => candidate.id)
+                  .filter((id) => id !== pageId)
+              : [];
 
-      for (const staleId of stalePageIdsToDelete) {
-        const deleted = await oneNoteClient.deletePage(staleId);
-        if (!deleted) {
-          // TODO: Surface orphaned pages in Sync Control so users can clean them up.
-          console.warn(
-            `[SyncEngine] Replaced OneNote page ${staleId} but could not delete it.`,
+          for (const staleId of stalePageIdsToDelete) {
+            const deleted = await oneNoteClient.deletePage(staleId);
+            if (!deleted) {
+              // TODO: Surface orphaned pages in Sync Control so users can clean them up.
+              console.warn(
+                `[SyncEngine] Replaced OneNote page ${staleId} but could not delete it.`,
+              );
+            }
+          }
+
+          await upsertSectionPageInMemory(
+            resolvedTarget.sectionId,
+            { id: pageId, title: effectiveTitle },
+            stalePageIdsToDelete,
           );
-        }
-      }
 
-      await upsertSectionPageInMemory(
-        resolvedTarget.sectionId,
-        { id: uploadedPageId, title: effectiveTitle },
-        stalePageIdsToDelete,
+          return pageId;
+        },
       );
 
       // Phase D: Indexing (Phantom Link verification polling until links.oneNoteWebUrl is populated)
@@ -894,7 +911,7 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
     }
   };
 
-  const workerCount = Math.max(1, Math.min(concurrency, pendingPages.length));
+  const workerCount = Math.max(1, Math.min(effectiveConcurrency, pendingPages.length));
   const runWorker = async (): Promise<void> => {
     while (nextIndex < pendingPages.length) {
       const current = nextIndex++;
@@ -964,5 +981,165 @@ export async function runSyncCycle(
   }
 
   return activeDefaultSyncCycle;
+}
+
+export interface RecoverPageResult {
+  ok: boolean;
+  oneNoteUrl?: string;
+  error?: string;
+}
+
+/**
+ * Recovers a tablet-deleted page by uploading it to a dedicated `<SectionName> (Recovered)`
+ * OneNote section, disambiguating multiple deleted revisions (e.g. `Page 3 (rev 1)`),
+ * and verifying that the `.rm` blob has not expired/been pruned on reMarkable Cloud.
+ */
+export async function recoverDeletedPage(
+  documentId: string,
+  pageId: string,
+  options: {
+    database?: RmOneNoteDatabase;
+    fetchImpl?: typeof fetch;
+    oneNoteClient?: OneNoteClient;
+    directoryCache?: OneNoteDirectoryCache;
+    phantomLinkPollDelaysMs?: readonly number[];
+  } = {},
+): Promise<RecoverPageResult> {
+  const database = options.database ?? db;
+  const page = await database.pages.get([documentId, pageId]);
+  if (!page) {
+    return { ok: false, error: 'Page record not found in local database.' };
+  }
+
+  const prefs = await getPreferences();
+  const oneNoteClient =
+    options.oneNoteClient ??
+    new OneNoteClient({
+      fetchImpl: options.fetchImpl,
+      maxConcurrentRequests: 1,
+      phantomLinkPollDelaysMs: options.phantomLinkPollDelaysMs,
+    });
+  const directoryCache =
+    options.directoryCache ?? new OneNoteDirectoryCache(oneNoteClient, database);
+
+  const targetPath = parseVirtualPathToOneNoteTarget(page.virtualPath, prefs.targetSection);
+  const recoveredSectionName = sanitizeOneNoteDisplayName(`${targetPath.sectionName} (Recovered)`);
+
+  // Disambiguate revision if multiple pages share this page number
+  const siblingPages = await database.pages.where('documentId').equals(documentId).toArray();
+  const sameNumberPages = siblingPages
+    .filter((p) => p.pageNumber === page.pageNumber)
+    .sort((a, b) => a.lastModified.localeCompare(b.lastModified));
+
+  let targetTitle = `Page ${page.pageNumber}`;
+  if (sameNumberPages.length > 1) {
+    const revIndex = sameNumberPages.findIndex((p) => p.pageId === pageId) + 1;
+    targetTitle = `Page ${page.pageNumber} (rev ${revIndex > 0 ? revIndex : 1})`;
+  }
+
+  let rmBytes: Uint8Array = new Uint8Array(0);
+  if (page.contentHash && page.fileSizeBytes > 0) {
+    try {
+      rmBytes = await downloadPageRmBytes(documentId, pageId, {
+        knownBlobHash: page.contentHash,
+        fetchImpl: options.fetchImpl,
+      });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const isExpired =
+        errMsg.includes('404') ||
+        errMsg.toLowerCase().includes('not found') ||
+        errMsg.toLowerCase().includes('pruned');
+
+      if (isExpired) {
+        const expiredMsg =
+          'Page content has expired and is no longer available on reMarkable Cloud.';
+        await updatePageStatus(
+          documentId,
+          pageId,
+          'Deleted',
+          { lastError: expiredMsg },
+          database,
+        );
+        return {
+          ok: false,
+          error: expiredMsg,
+        };
+      }
+      throw err;
+    }
+  }
+
+  let backgroundPdfBytes: Uint8Array | null = null;
+  if (page.pdfBlobHash) {
+    try {
+      const pdfBytes = await downloadDocumentBlobBytes(
+        documentId,
+        `${documentId}.pdf`,
+        {
+          knownBlobHash: page.pdfBlobHash,
+          fetchImpl: options.fetchImpl,
+        },
+      );
+      const loadedPdf = await loadSourcePdfDocument(pdfBytes);
+      const resolvedPageIndex = page.pdfPageIndex ?? Number.parseInt(page.pageNumber, 10) - 1;
+      const extracted = await extractSinglePdfPageWithMetricsFromDocument(
+        loadedPdf,
+        resolvedPageIndex,
+      );
+      backgroundPdfBytes = extracted ? extracted.pdfBytes : null;
+    } catch (err) {
+      console.warn(`[rmOneNote] Failed to load background PDF during page recovery:`, err);
+    }
+  }
+
+  const converted = convertRmPage(rmBytes, {
+    pageTitle: targetTitle,
+    includeBackgroundImageRef: backgroundPdfBytes !== null,
+  });
+
+  const resolvedTarget = await directoryCache.resolveTargetNotebookAndSection(
+    targetPath.notebookName,
+    recoveredSectionName,
+  );
+
+  const uploadedPageId = await oneNoteClient.uploadInkMlPage({
+    sectionId: resolvedTarget.sectionId,
+    title: targetTitle,
+    presentationHtml: converted.presentationHtml,
+    inkmlXml: converted.inkmlXml,
+    backgroundPdfBytes,
+  });
+
+  const verified = await oneNoteClient.getPageWithPhantomLinkVerification(uploadedPageId);
+  const syncedAtMs = Date.now();
+  const syncedAtIso = new Date(syncedAtMs).toISOString();
+
+  await updatePageStatus(
+    documentId,
+    pageId,
+    'Deleted',
+    {
+      oneNotePageId: uploadedPageId,
+      oneNotePageUrl: verified.oneNoteUrl,
+      syncedAtIso,
+      lastError: null,
+      titleRenameOnly: false,
+    },
+    database,
+  );
+
+  await recordSyncedPagesInLedger([
+    {
+      documentId,
+      pageId,
+      syncedAtUnixSec: Math.floor(syncedAtMs / 1000),
+    },
+  ]);
+
+  return {
+    ok: true,
+    oneNoteUrl: verified.oneNoteUrl,
+  };
 }
 
