@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Implemented `removeSyncedPagesFromLedger` (`syncLedger.ts`) to cleanly evict purged pages from the `storage.sync` ledger upon OneNote deletion.
   - Updated `syncEngine.ts` to preserve local page records in IndexedDB with `status: 'Deleted'`, clearing only OneNote references (`oneNotePageId: null`) while keeping `pageNumber`, file size, and stroke hashes intact so they remain available in the Deleted Pages list for inspection and recovery.
   - Added self-healing cleanup in `treeSync.ts` to automatically prune any headless orphan stubs with empty page numbers on the next `Load Folders`, and filtered empty page numbers in `SyncControlView.tsx`.
+  - Updated `treeSync.ts` to permanently preserve tablet-deleted pages in Dexie as `status: 'Deleted'`, removing the erroneous branch that bulk-deleted them whenever `oneNotePageId` became `null`.
+  - Excluded deleted pages from the document page count badge (`computeRollupForPages` in `SyncControlView.tsx`), ensuring the tree title only counts active pages (e.g. `2 pages` instead of `3 pages`).
 - Vertical (portrait) PDF ink alignment: generalized physical 226 DPI himetric scaling factor (`2540 / 226`) and centered page bounding box (`-pageHalfWidth` to `+pageHalfWidth`, `yMin: 0`) across all annotated PDF pages, resolving horizontal ink shift when annotating vertical/portrait PDFs in OneNote.
 - OneNote duplicate page accumulation: resolved 20-page cutoff where Graph's default `$top=20` pagination caused older or newly appended pages to be invisible to the deduplication check, causing repeated uploads.
 

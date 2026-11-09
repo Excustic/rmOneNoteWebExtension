@@ -664,12 +664,14 @@ async function executeCloudTreeSync(
             continue;
           }
 
-          if (existingPage.status === 'Uploaded' || existingPage.oneNotePageId !== null) {
-            if (existingPage.status !== 'Deleted') {
-              pagesToPut.push({ ...existingPage, status: 'Deleted' });
-            }
-          } else {
-            pageKeysToDelete.push([docId, pageId]);
+          // If the page was removed from the tablet, mark it as Deleted so it remains visible
+          // in Deleted Pages for inspection and recovery. Do not prune it from Dexie.
+          if (existingPage.status !== 'Deleted') {
+            pagesToPut.push({
+              ...existingPage,
+              status: 'Deleted',
+              titleRenameOnly: false,
+            });
           }
         }
       }

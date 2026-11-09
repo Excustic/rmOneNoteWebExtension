@@ -120,7 +120,9 @@ export function computeRollupForPages(
   docOneNoteUrl?: string | null,
   docLastModified?: string | null,
 ): NodeSyncRollup {
-  if (pages.length === 0) {
+  // Exclude tablet-deleted pages from the tree badges and document rollup
+  const activePagesList = pages.filter((p) => p.status !== 'Deleted');
+  if (activePagesList.length === 0) {
     return {
       ...EMPTY_ROLLUP,
       oneNoteUrl: docOneNoteUrl ?? null,
@@ -136,7 +138,7 @@ export function computeRollupForPages(
   let latestOneNoteUrl: string | null = docOneNoteUrl ?? null;
   let anyPageOutOfDate = false;
 
-  for (const page of pages) {
+  for (const page of activePagesList) {
     const vState = mapPageStatusToVisualState(page.status);
     if (vState === 'uploading') {
       activePages++;
@@ -194,7 +196,7 @@ export function computeRollupForPages(
     visualState,
     lastSyncedAt,
     oneNoteUrl: latestOneNoteUrl,
-    totalPages: pages.length,
+    totalPages: activePagesList.length,
     uploadedPages,
     pendingPages,
     failedPages,
