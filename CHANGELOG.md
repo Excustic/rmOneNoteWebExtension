@@ -10,9 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Interactive resizable table columns for the 30-day activity table in Dashboard view (`DashboardView.tsx`) with drag handles, double-click reset, minimum column width constraints, and persistent column widths in `localStorage`.
 - Full text hover tooltips (`title` attribute) on truncated text cells across the Dashboard activity table and Sync Control tree nodes / side panel headers.
+- Paginated OneNote section page listing (`OneNoteClient.listPages`): queries in batches of up to 100 (`$top=100`) and follows `@odata.nextLink` until the section is exhausted or a configurable ceiling is reached.
+- New `maxSectionPagesQueryLimit` setting (default: 300, range: 20 – 1000) and `syncUnannotatedPdfPages` toggle (default: false) in `UserPreferences` and `SettingsView.tsx` with pragmatic documentation.
+- Bulk duplicate purging in `syncEngine.ts`: finds and deletes all matching stale pages in a section upon re-sync instead of only the first match.
 
 ### Fixed
 - Vertical (portrait) PDF ink alignment: generalized physical 226 DPI himetric scaling factor (`2540 / 226`) and centered page bounding box (`-pageHalfWidth` to `+pageHalfWidth`, `yMin: 0`) across all annotated PDF pages, resolving horizontal ink shift when annotating vertical/portrait PDFs in OneNote.
+- OneNote duplicate page accumulation: resolved 20-page cutoff where Graph's default `$top=20` pagination caused older or newly appended pages to be invisible to the deduplication check, causing repeated uploads.
 
 ## [1.0.0] - 2026-11-09
 

@@ -296,42 +296,73 @@ export class OneNoteClient {
 
   /**
    * Lists pages in a section (`id,title,createdDateTime,lastModifiedDateTime,contentUrl,links`)
-   * with up to 3 retry attempts on transient Graph errors (`429`, `500`, `503`, `504`).
+   * in batches of up to 100 ($top=100), iteratively following `@odata.nextLink` until the section
+   * is exhausted or `maxPages` (default 300) is reached.
    */
-  async listPages(sectionId: string): Promise<OneNotePage[]> {
+  async listPages(sectionId: string, maxPages = 300): Promise<OneNotePage[]> {
     const maxRetries = 3;
-    const url =
+    const effectiveLimit = Math.max(1, maxPages);
+    const pageSize = Math.min(100, effectiveLimit);
+    let nextUrl: string | null =
       `${ONENOTE_GRAPH_BASE_URL}/sections/${encodeURIComponent(sectionId)}/pages` +
-      '?$select=id,title,createdDateTime,lastModifiedDateTime,contentUrl,links';
+      `?$select=id,title,createdDateTime,lastModifiedDateTime,contentUrl,links&$top=${pageSize}`;
 
-    for (let retry = 0; retry < maxRetries; retry += 1) {
-      try {
-        const response = await this.requestWithAuth(url);
-        if (!response.ok) {
-          if (retry < maxRetries - 1 && isRetryableGraphStatus(response.status)) {
-            const delayMs = computeGraphBackoffMs(retry, {
-              retryAfterHeader: response.headers.get('Retry-After'),
-              jitterMaxSeconds: 2,
-              randomFn: this.randomImpl,
-            });
-            await this.sleepImpl(delayMs);
+    const allPages: OneNotePage[] = [];
+
+    while (nextUrl && allPages.length < effectiveLimit) {
+      const currentUrl: string = nextUrl;
+      let fetchedThisPage = false;
+
+      for (let retry = 0; retry < maxRetries; retry += 1) {
+        try {
+          const response = await this.requestWithAuth(currentUrl);
+          if (!response.ok) {
+            if (retry < maxRetries - 1 && isRetryableGraphStatus(response.status)) {
+              const delayMs = computeGraphBackoffMs(retry, {
+                retryAfterHeader: response.headers.get('Retry-After'),
+                jitterMaxSeconds: 2,
+                randomFn: this.randomImpl,
+              });
+              await this.sleepImpl(delayMs);
+              continue;
+            }
+            await this.throwDetailedError(response);
+          }
+
+          const payload = (await response.json()) as ODataCollectionResponse<OneNotePage>;
+          if (payload.value && Array.isArray(payload.value)) {
+            for (const p of payload.value) {
+              allPages.push(p);
+              if (allPages.length >= effectiveLimit) {
+                break;
+              }
+            }
+          }
+
+          const nextLink = payload['@odata.nextLink'];
+          nextUrl =
+            typeof nextLink === 'string' &&
+            nextLink.trim().length > 0 &&
+            allPages.length < effectiveLimit
+              ? nextLink.trim()
+              : null;
+          fetchedThisPage = true;
+          break;
+        } catch (err) {
+          if (retry < maxRetries - 1 && isNetworkOrTimeoutError(err)) {
+            await this.sleepImpl(1000);
             continue;
           }
-          await this.throwDetailedError(response);
+          throw err;
         }
+      }
 
-        const payload = (await response.json()) as ODataCollectionResponse<OneNotePage>;
-        return payload.value ? [...payload.value] : [];
-      } catch (err) {
-        if (retry < maxRetries - 1 && isNetworkOrTimeoutError(err)) {
-          await this.sleepImpl(1000);
-          continue;
-        }
-        throw err;
+      if (!fetchedThisPage) {
+        throw new Error('Exhausted retries while listing OneNote pages.');
       }
     }
 
-    throw new Error('Exhausted retries while listing OneNote pages.');
+    return allPages;
   }
 
   /**

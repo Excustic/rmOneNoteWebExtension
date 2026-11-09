@@ -337,5 +337,76 @@ describe('Phase 6: Microsoft Graph OneNote Client, Throttling, and Directory Cac
     ]);
     expect(order).toEqual(['k1-start', 'k1-end', 'k1-second']);
   });
+
+  it('paginates listPages via @odata.nextLink up to maxPages ceiling in $top=100 batches', async () => {
+    const requestedUrls: string[] = [];
+
+    const mockFetch = vi.fn<typeof fetch>(async (input) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      requestedUrls.push(url);
+
+      if (url.includes('&$top=100') && !url.includes('skip=')) {
+        // Page 1: 100 items + nextLink
+        const items = Array.from({ length: 100 }, (_, i) => ({
+          id: `page-batch1-${i}`,
+          title: `Page ${i + 1}`,
+        }));
+        return new Response(
+          JSON.stringify({
+            value: items,
+            '@odata.nextLink': `${ONENOTE_GRAPH_BASE_URL}/sections/sec-large/pages?skip=100`,
+          }),
+          { status: 200 }
+        );
+      }
+
+      if (url.includes('skip=100')) {
+        // Page 2: 100 items + nextLink
+        const items = Array.from({ length: 100 }, (_, i) => ({
+          id: `page-batch2-${i}`,
+          title: `Page ${i + 101}`,
+        }));
+        return new Response(
+          JSON.stringify({
+            value: items,
+            '@odata.nextLink': `${ONENOTE_GRAPH_BASE_URL}/sections/sec-large/pages?skip=200`,
+          }),
+          { status: 200 }
+        );
+      }
+
+      if (url.includes('skip=200')) {
+        // Page 3: 50 items (end of section)
+        const items = Array.from({ length: 50 }, (_, i) => ({
+          id: `page-batch3-${i}`,
+          title: `Page ${i + 201}`,
+        }));
+        return new Response(
+          JSON.stringify({
+            value: items,
+          }),
+          { status: 200 }
+        );
+      }
+
+      return new Response('Not Found', { status: 404 });
+    });
+
+    const client = new OneNoteClient({ fetchImpl: mockFetch });
+    const pages = await client.listPages('sec-large', 300);
+
+    expect(pages).toHaveLength(250);
+    expect(pages[0].id).toBe('page-batch1-0');
+    expect(pages[99].id).toBe('page-batch1-99');
+    expect(pages[100].id).toBe('page-batch2-0');
+    expect(pages[249].id).toBe('page-batch3-49');
+    expect(requestedUrls).toHaveLength(3);
+
+    // Verify maxPages ceiling stops early if limit is reached
+    requestedUrls.length = 0;
+    const cappedPages = await client.listPages('sec-large', 150);
+    expect(cappedPages).toHaveLength(150);
+    expect(requestedUrls).toHaveLength(2);
+  });
 });
 

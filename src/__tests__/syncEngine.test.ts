@@ -301,6 +301,20 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
     expect(uploadBodies[2]).toContain('<inkml:trace');
     expect(deletedPageIds).toEqual(['onenote-page-1']);
     expect((await getPage(DOC_ID, PAGE_1_ID, testDb))?.oneNotePageId).toBe('onenote-page-3');
+
+    // Simulate an existing orphaned duplicate in OneNote: both the previous page
+    // and the orphaned duplicate matching the title are purged on the next sync
+    sectionPages.push({ id: 'orphaned-dup-1', title: 'Page 1' });
+    setCloudVersion('root_v3', 'rm_page1_v3', 'sub_doc_v3');
+    const thirdRun = await runSyncCycle({
+      database: testDb,
+      fetchImpl: mockFetch,
+      phantomLinkPollDelaysMs: [1, 1, 1],
+    });
+
+    expect(thirdRun.uploadedCount).toBe(1);
+    expect(deletedPageIds).toEqual(['onenote-page-1', 'onenote-page-3', 'orphaned-dup-1']);
+    expect((await getPage(DOC_ID, PAGE_1_ID, testDb))?.oneNotePageId).toBe('onenote-page-4');
   });
 
   it('supports per-item cancellation, failed page retry reset, and alarm scheduling from preferences', async () => {

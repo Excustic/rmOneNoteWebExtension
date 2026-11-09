@@ -236,6 +236,41 @@ export function SettingsView({
             />
           </div>
 
+          <div>
+            <label
+              htmlFor="max-section-pages-query-limit"
+              className="block text-sm font-medium text-slate-700"
+            >
+              OneNote section scan limit ($top)
+            </label>
+            <span
+              id="max-section-pages-query-limit-hint"
+              className="mt-0.5 block text-xs text-slate-500"
+            >
+              Maximum existing pages to scan per OneNote section (in batches of 100) to detect already-synced
+              pages and eliminate duplicates. Defaults to 300 pages (range: 20 – 1000). Setting this to 300
+              ensures large notebooks are fully scanned so older or appended pages are not duplicated.
+            </span>
+            <input
+              id="max-section-pages-query-limit"
+              name="maxSectionPagesQueryLimit"
+              type="number"
+              min={20}
+              max={1000}
+              step={10}
+              required
+              value={prefs.maxSectionPagesQueryLimit}
+              onChange={(e) =>
+                setPrefs((prev) => ({
+                  ...prev,
+                  maxSectionPagesQueryLimit: Number(e.target.value) || 300,
+                }))
+              }
+              aria-describedby="max-section-pages-query-limit-hint"
+              className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-2xs"
+            />
+          </div>
+
           <div data-tour="settings-width-control">
             <label
               htmlFor="container-width-range"
@@ -347,6 +382,28 @@ export function SettingsView({
               className="py-1 text-sm font-medium text-slate-700"
             >
               Automatically sync new notebooks created inside whitelisted folders
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <input
+              id="sync-unannotated-pdf-pages"
+              name="syncUnannotatedPdfPages"
+              type="checkbox"
+              checked={prefs.syncUnannotatedPdfPages}
+              onChange={(e) =>
+                setPrefs((prev) => ({
+                  ...prev,
+                  syncUnannotatedPdfPages: e.target.checked,
+                }))
+              }
+              className="h-4 w-4 rounded border-slate-300 accent-brand"
+            />
+            <label
+              htmlFor="sync-unannotated-pdf-pages"
+              className="py-1 text-sm font-medium text-slate-700"
+            >
+              Auto-sync unannotated (blank) PDF background pages (disabled by default to save storage)
             </label>
           </div>
 

@@ -44,6 +44,7 @@ export interface OneNotePage {
 
 export interface ODataCollectionResponse<T> {
   readonly value?: readonly T[] | null;
+  readonly '@odata.nextLink'?: string | null;
 }
 
 export interface OneNoteTargetPath {

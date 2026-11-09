@@ -506,7 +506,10 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
       if (cached) {
         return cached;
       }
-      const listed = await oneNoteClient.listPages(sectionId);
+      const listed = await oneNoteClient.listPages(
+        sectionId,
+        prefs.maxSectionPagesQueryLimit,
+      );
       sectionPagesMap.set(sectionId, [...listed]);
       return sectionPagesMap.get(sectionId)!;
     });
@@ -515,14 +518,23 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
   const upsertSectionPageInMemory = async (
     sectionId: string,
     uploadedPage: OneNotePage,
-    replacedPageId?: string | null,
+    replacedPageIds?: readonly string[] | string | null,
   ): Promise<void> => {
+    const replacedSet = new Set<string>();
+    if (Array.isArray(replacedPageIds)) {
+      for (const id of replacedPageIds) {
+        replacedSet.add(id);
+      }
+    } else if (typeof replacedPageIds === 'string' && replacedPageIds.length > 0) {
+      replacedSet.add(replacedPageIds);
+    }
+
     await sectionPagesMutex.runExclusive(sectionId, async () => {
       const current = sectionPagesMap.get(sectionId) ?? [];
       const filtered = current.filter(
         (p) =>
           p.id !== uploadedPage.id &&
-          (replacedPageId ? p.id !== replacedPageId : true) &&
+          !replacedSet.has(p.id) &&
           p.title !== uploadedPage.title,
       );
       filtered.push(uploadedPage);
@@ -644,7 +656,7 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
       await onPhaseChange?.('Uploading', `Uploading ${page.virtualPath}`);
 
       const existingSectionPages = await getSectionPagesCached(resolvedTarget.sectionId);
-      const matchingExisting = existingSectionPages.find(
+      const matchingExistingList = existingSectionPages.filter(
         (candidate) =>
           (page.oneNotePageId !== null && candidate.id === page.oneNotePageId) ||
           candidate.title === targetPath.pageTitle,
@@ -663,12 +675,16 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
         backgroundPdfBytes,
       });
 
-      if (matchingExisting && matchingExisting.id !== uploadedPageId) {
-        const deleted = await oneNoteClient.deletePage(matchingExisting.id);
+      const stalePageIdsToDelete = matchingExistingList
+        .map((candidate) => candidate.id)
+        .filter((id) => id !== uploadedPageId);
+
+      for (const staleId of stalePageIdsToDelete) {
+        const deleted = await oneNoteClient.deletePage(staleId);
         if (!deleted) {
           // TODO: Surface orphaned pages in Sync Control so users can clean them up.
           console.warn(
-            `[SyncEngine] Replaced OneNote page ${matchingExisting.id} but could not delete it.`,
+            `[SyncEngine] Replaced OneNote page ${staleId} but could not delete it.`,
           );
         }
       }
@@ -676,7 +692,7 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
       await upsertSectionPageInMemory(
         resolvedTarget.sectionId,
         { id: uploadedPageId, title: targetPath.pageTitle },
-        matchingExisting?.id ?? null,
+        stalePageIdsToDelete,
       );
 
       // Phase D: Indexing (Phantom Link verification polling until links.oneNoteWebUrl is populated)

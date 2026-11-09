@@ -21,6 +21,16 @@ export interface UserPreferences {
   cacheRetentionDays: number;
   /** Main Options page container max-width in CSS pixels. */
   containerWidthPx: number;
+  /**
+   * Maximum number of existing OneNote section pages to inspect (in $top=100 batches)
+   * to find and deduplicate already-synced pages. Default 300.
+   */
+  maxSectionPagesQueryLimit: number;
+  /**
+   * Whether auto-sync uploads unannotated (blank) PDF background pages.
+   * Default false (only upload pages with ink strokes).
+   */
+  syncUnannotatedPdfPages: boolean;
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
@@ -31,6 +41,8 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   maxRetries: 3,
   cacheRetentionDays: 30,
   containerWidthPx: DEFAULT_CONTAINER_WIDTH_PX,
+  maxSectionPagesQueryLimit: 300,
+  syncUnannotatedPdfPages: false,
 };
 
 export interface SyncWhitelist {
@@ -94,6 +106,16 @@ function normalizePreferences(raw: Partial<UserPreferences> | undefined): UserPr
       MIN_CONTAINER_WIDTH_PX,
       MAX_CONTAINER_WIDTH_PX,
     ),
+    maxSectionPagesQueryLimit: clampInt(
+      raw.maxSectionPagesQueryLimit,
+      DEFAULT_USER_PREFERENCES.maxSectionPagesQueryLimit,
+      20,
+      1000,
+    ),
+    syncUnannotatedPdfPages:
+      typeof raw.syncUnannotatedPdfPages === 'boolean'
+        ? raw.syncUnannotatedPdfPages
+        : DEFAULT_USER_PREFERENCES.syncUnannotatedPdfPages,
   };
 }
 
