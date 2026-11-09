@@ -109,6 +109,15 @@ export function Sidebar({ activeRoute, isConfigured, onStartTour }: SidebarProps
             <LegacyIcon name="github" className="h-3.5 w-3.5 shrink-0 text-slate-400" />
             <span>GitHub</span>
           </a>
+          <a
+            href="https://ko-fi.com/michaelkushnir"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-6 items-center gap-1.5 rounded px-1.5 py-1 text-slate-300 transition-colors hover:bg-sidebar-hover hover:text-white"
+          >
+            <LegacyIcon name="kofi" className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <span>Donate</span>
+          </a>
           <span>Made by Excustic - GPL3.0</span>
         </div>
       </div>

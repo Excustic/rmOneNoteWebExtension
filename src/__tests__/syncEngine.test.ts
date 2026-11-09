@@ -934,4 +934,124 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
       'Page content has expired and is no longer available on reMarkable Cloud.',
     );
   });
+
+  it('uploads multi-page notebook in chronological ascending order even if later pages finish conversion earlier', async () => {
+    const createdPageTitles: string[] = [];
+    const rmBytes = buildMinimalRmV3Bytes();
+
+    const cloudBlobs: Record<string, string | Uint8Array> = {
+      ...buildCloudBlobs('rm_page1_v1', 'sub_doc_v1', rmBytes),
+      root_v1: [
+        '4',
+        '0:.:2:8150',
+        `sub_folder:80000000:${FOLDER_ID}:1:150`,
+        `sub_doc_v1:80000000:${DOC_ID}:4:8000`,
+      ].join('\n'),
+    };
+
+    const mockFetch: typeof fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      const method = (init?.method ?? 'GET').toUpperCase();
+      const path = url.replace(/^https:\/\/graph\.microsoft\.com\/v1\.0\/me\/onenote/, '');
+
+      if (url === REMARKABLE_SYNC_ROOT_URL) {
+        return new Response(
+          JSON.stringify({ hash: 'root_v1', generation: 1, schemaVersion: 4 }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      if (url.startsWith(`${REMARKABLE_SYNC_FILES_URL}/`)) {
+        const hash = decodeURIComponent(url.slice(`${REMARKABLE_SYNC_FILES_URL}/`.length));
+        if (hash === 'rm_page1_v1') {
+          // Delay Page 1 download so Page 2 finishes conversion much faster
+          await new Promise((resolve) => setTimeout(resolve, 60));
+        }
+        const data = cloudBlobs[hash];
+        if (data) {
+          const body = typeof data === 'string' ? data : (data as unknown as BodyInit);
+          return new Response(body, {
+            status: 200,
+            headers: {
+              'Content-Type': typeof data === 'string' ? 'text/plain' : 'application/octet-stream',
+            },
+          });
+        }
+        return new Response('Not Found', { status: 404 });
+      }
+
+      if (path.startsWith('/notebooks') && !path.includes('/sections') && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            value: [
+              {
+                id: 'nb-1',
+                displayName: 'rm_Academy',
+                links: { oneNoteWebUrl: { href: 'https://onenote.com/nb-1' } },
+                sections: [{ id: 'sec-1', displayName: 'Calculus 1' }],
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      if (path.includes('/sections') && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            value: [{ id: 'sec-1', displayName: 'Calculus 1' }],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      if (path.includes('/pages') && method === 'POST') {
+        const bodyStr =
+          typeof init?.body === 'string'
+            ? init.body
+            : init?.body instanceof Uint8Array
+              ? new TextDecoder().decode(init.body)
+              : '';
+        const match = bodyStr.match(/<title>([^<]+)<\/title>/);
+        if (match) {
+          createdPageTitles.push(match[1]);
+        }
+        return new Response(
+          JSON.stringify({
+            id: `on-pg-${createdPageTitles.length}`,
+            title: match ? match[1] : 'Untitled',
+            links: { oneNoteWebUrl: { href: 'https://onenote.com/test' } },
+          }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      if (path.includes('/pages/') && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            id: 'on-pg-verified',
+            links: { oneNoteWebUrl: { href: 'https://onenote.com/test' } },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      return new Response(JSON.stringify({ value: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await updatePreferences({ syncConcurrency: 3, targetSection: 'Default' });
+    await setWhitelist({ syncFiles: [DOC_ID], syncFolders: [] });
+
+    const summary = await runSyncCycle({
+      database: testDb,
+      fetchImpl: mockFetch,
+      phantomLinkPollDelaysMs: [0],
+    });
+
+    expect(summary.uploadedCount).toBe(2);
+    expect(createdPageTitles).toEqual(['Page 1', 'Page 2']);
+  });
 });

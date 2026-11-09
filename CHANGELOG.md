@@ -35,6 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Deleted on tablet` badge marking pages removed on the tablet while preserved in OneNote.
 
 ### Fixed
+- Out-of-order page uploads in multi-page OneNote sections:
+  - While mutual exclusion existed on section page creation, workers with higher concurrency arrived out of sequence when smaller/simpler pages finished `.rm` download and conversion faster than earlier pages, causing Microsoft Graph to timestamp and order pages out of sequence (e.g. `Page 2` created before `Page 1`).
+  - Implemented pre-created sequential in-order creation barriers per document (`pageCreationGates` in `syncEngine.ts`). Workers download and convert `.rm` files and background PDFs concurrently across workers, but each worker awaits the creation barrier of the preceding page of the same document before calling Microsoft Graph `uploadInkMlPage`.
+  - Added unit test verifying strict chronological page creation ordering under artificial delays and high concurrency.
+- Ghost selection counter in Sync Control toolbar ("Sync Selected (N)"):
+  - Reconciled `selectedPageIds` against the current set of active pages (`activePages`) via a dynamic effect in `SyncControlView.tsx`. When pages are deleted or reordered on the tablet and `Load Folders` refreshes Dexie, stale deleted page IDs are automatically pruned from state so the button counter always exactly matches the number of checked active pages.
+- Ambiguous `Pending` state for reordered pages:
+  - Added clear `Reorder Pending` badge in `SyncControlView.tsx` and `DashboardView.tsx` when `page.titleRenameOnly` is true, informing the user that the page only needs a OneNote title rename rather than an ink re-upload.
+- Clipped viewport height in Sync Control:
+  - Replaced hardcoded `max-h-[600px]` constraints on the file tree container and the pages side panel with responsive `min-h-[550px] max-h-[calc(100vh-210px)]` sizing, allowing the tree and inspector views to dynamically stretch down to the bottom of the viewport with standard padding.
 - Deleted page ghost resurrection and vanishing bug in mirror mode:
   - Previously, purging a page from OneNote in `mirror` mode completely deleted the record from IndexedDB (`database.pages.delete`). This caused the page to disappear from the user's Deleted Pages view and lose its metadata (`pageNumber`, `fileSizeBytes`, `contentHash`).
   - Because the page remained in the `storage.sync` ledger, subsequent reconciliations resurrected it as a headless stub with `pageNumber: ''`, appearing in the UI as a blank `Page ` (0 KB).

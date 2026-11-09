@@ -428,6 +428,41 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
     return a.pageNumber.localeCompare(b.pageNumber, undefined, { numeric: true });
   });
 
+  // Pre-create sequential in-order creation barriers per document so multi-page
+  // notebooks create pages on Microsoft Graph in exact ascending chronological order (Page 1, Page 2, ...).
+  // Workers can still download and convert in parallel; only the final Graph page creation
+  // awaits completion of the preceding page of the same document.
+  interface PageCreationGate {
+    wait: Promise<void>;
+    promise: Promise<void>;
+    release: () => void;
+  }
+
+  const pageCreationGates = new Map<number, PageCreationGate>();
+  const lastIndexByDocId = new Map<string, number>();
+
+  for (let idx = 0; idx < pendingPages.length; idx++) {
+    const page = pendingPages[idx];
+    const prevIdx = lastIndexByDocId.get(page.documentId);
+    lastIndexByDocId.set(page.documentId, idx);
+
+    let releaseCurrent: () => void = () => {};
+    const currentPromise = new Promise<void>((resolve) => {
+      releaseCurrent = resolve;
+    });
+
+    const waitPromise =
+      prevIdx !== undefined
+        ? pageCreationGates.get(prevIdx)!.promise
+        : Promise.resolve();
+
+    pageCreationGates.set(idx, {
+      wait: waitPromise,
+      promise: currentPromise,
+      release: releaseCurrent,
+    });
+  }
+
   const whitelistedDocsLower = computeWhitelistedDocumentSet(allDocs, whitelist);
   const docMap = new Map<string, DocumentRecord>(
     allDocs.map((doc) => [doc.documentId, doc]),
@@ -613,8 +648,12 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
   const outcomes: PageSyncOutcome[] = new Array<PageSyncOutcome>(pendingPages.length);
   let nextIndex = 0;
 
-  const processSinglePage = async (page: PageRecord): Promise<PageSyncOutcome> => {
-    const pageKey = buildPageKey(page.documentId, page.pageId);
+  const processSinglePage = async (
+    page: PageRecord,
+    pageIndex: number,
+  ): Promise<PageSyncOutcome> => {
+    try {
+      const pageKey = buildPageKey(page.documentId, page.pageId);
     const isManualOverride = manualOverridePageKeys.has(pageKey);
     manualOverridePageKeys.delete(pageKey);
 
@@ -795,8 +834,14 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
       // Deleting last means a failed upload never loses the existing page.
       //
       // To guarantee OneNote displays pages in ascending order (Page 1, Page 2, Page 3),
-      // we serialize page creation per target section so faster lightweight pages do
+      // we await the sequential creation barrier of the preceding page of this document,
+      // and serialize page creation per target section so faster lightweight pages do
       // not overtake earlier pages on Microsoft Graph.
+      const gate = pageCreationGates.get(pageIndex);
+      if (gate) {
+        await gate.wait;
+      }
+
       const uploadedPageId = await sectionPagesMutex.runExclusive(
         `create:${resolvedTarget.sectionId}`,
         async () => {
@@ -834,6 +879,9 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
           return pageId;
         },
       );
+
+      // Release the barrier for the next page in this document immediately
+      gate?.release();
 
       // Phase D: Indexing (Phantom Link verification polling until links.oneNoteWebUrl is populated)
       await updatePageStatus(
@@ -928,13 +976,16 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
         error: errorMessage,
       };
     }
-  };
+  } finally {
+    pageCreationGates.get(pageIndex)?.release();
+  }
+};
 
   const workerCount = Math.max(1, Math.min(effectiveConcurrency, pendingPages.length));
   const runWorker = async (): Promise<void> => {
     while (nextIndex < pendingPages.length) {
       const current = nextIndex++;
-      outcomes[current] = await processSinglePage(pendingPages[current]);
+      outcomes[current] = await processSinglePage(pendingPages[current], current);
     }
   };
 

@@ -630,6 +630,15 @@ export function DashboardView({
                             </span>
                           ) : null}
 
+                          {page.titleRenameOnly ? (
+                            <span
+                              className="inline-flex items-center rounded border border-blue-300 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800"
+                              title={`Page was reordered on tablet: pending OneNote title rename to Page ${page.pageNumber}`}
+                            >
+                              Reorder Pending
+                            </span>
+                          ) : null}
+
                           {page.status === 'Deleted' ? (
                             <span
                               className="inline-flex items-center rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-800"

@@ -716,6 +716,27 @@ export function SyncControlView({
     [rollupMap, inspectedDocId],
   );
 
+  // Reconcile selectedPageIds whenever active pages change so ghost selections
+  // from deleted or reordered pages do not inflate the "Sync Selected (N)" counter.
+  useEffect(() => {
+    if (!inspectedDocId) {
+      return;
+    }
+    const validActiveIds = new Set(activePages.map((p) => p.pageId));
+    setSelectedPageIds((prev) => {
+      let hasChanges = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (validActiveIds.has(id)) {
+          next.add(id);
+        } else {
+          hasChanges = true;
+        }
+      }
+      return hasChanges ? next : prev;
+    });
+  }, [activePages, inspectedDocId]);
+
   const handleInspectDocument = useCallback(
     (docNode: FileTreeNode) => {
       setInspectedDocId((prev) => {
@@ -1266,7 +1287,7 @@ export function SyncControlView({
               <div
                 role="group"
                 aria-label="reMarkable Cloud folder and document tree"
-                className="scroll-region max-h-[600px] space-y-0.5 p-3"
+                className="scroll-region min-h-[550px] max-h-[calc(100vh-210px)] space-y-0.5 p-3"
               >
                 {filteredRoots.map((node) => (
                   <TreeNodeRow
@@ -1308,7 +1329,7 @@ export function SyncControlView({
             }`}
           >
             {inspectedDocNode ? (
-              <div className="flex max-h-[600px] flex-col">
+              <div className="flex min-h-[550px] max-h-[calc(100vh-210px)] flex-col">
                 <div className="flex items-start justify-between gap-3 border-b border-slate-200 bg-white p-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -1440,6 +1461,15 @@ export function SyncControlView({
                                         title={`Page was reordered on tablet: was Page ${page.originalPageNumber}, now Page ${page.pageNumber}`}
                                       >
                                         Moved: Page {page.originalPageNumber} &rarr; Page {page.pageNumber}
+                                      </span>
+                                    ) : null}
+
+                                    {page.titleRenameOnly ? (
+                                      <span
+                                        className="inline-flex items-center rounded border border-blue-300 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800"
+                                        title={`Page was reordered on tablet: pending OneNote title rename to Page ${page.pageNumber}`}
+                                      >
+                                        Reorder Pending
                                       </span>
                                     ) : null}
 
