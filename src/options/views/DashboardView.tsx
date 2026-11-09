@@ -21,6 +21,30 @@ interface DashboardViewProps {
 
 type ActivityFilter = 'all' | 'uploaded' | 'active' | 'failed';
 
+interface ColumnDef {
+  id: string;
+  label: string;
+  defaultWidth: number;
+  minWidth: number;
+  align?: 'left' | 'right';
+}
+
+const DASHBOARD_TABLE_COLUMNS: readonly ColumnDef[] = [
+  { id: 'item', label: 'Notebook / Page', defaultWidth: 320, minWidth: 160 },
+  { id: 'status', label: 'Status', defaultWidth: 130, minWidth: 90 },
+  { id: 'time', label: 'Synced Time', defaultWidth: 170, minWidth: 120 },
+  { id: 'link', label: 'OneNote Link', defaultWidth: 140, minWidth: 110 },
+  { id: 'actions', label: 'Actions', defaultWidth: 100, minWidth: 80, align: 'right' },
+];
+
+const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
+  item: 320,
+  status: 130,
+  time: 170,
+  link: 140,
+  actions: 100,
+};
+
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function DashboardView({
@@ -33,6 +57,78 @@ export function DashboardView({
   const [searchQuery, setSearchQuery] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [feedback, setFeedback] = useState<{ isError: boolean; text: string } | null>(null);
+
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem('rm_dashboard_table_col_widths');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed === 'object' && parsed !== null) {
+          return { ...DEFAULT_COLUMN_WIDTHS, ...parsed };
+        }
+      }
+    } catch {
+      // fallback to defaults
+    }
+    return DEFAULT_COLUMN_WIDTHS;
+  });
+
+  const handleColResizeStart = (
+    colId: string,
+    e: React.PointerEvent<HTMLDivElement>
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = columnWidths[colId] || DEFAULT_COLUMN_WIDTHS[colId] || 150;
+    const colDef = DASHBOARD_TABLE_COLUMNS.find((c) => c.id === colId);
+    const minWidth = colDef?.minWidth || 80;
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const nextWidth = Math.max(minWidth, startWidth + deltaX);
+      setColumnWidths((prev) => ({
+        ...prev,
+        [colId]: nextWidth,
+      }));
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setColumnWidths((current) => {
+        try {
+          localStorage.setItem('rm_dashboard_table_col_widths', JSON.stringify(current));
+        } catch {
+          // ignore
+        }
+        return current;
+      });
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
+
+  const handleColReset = (colId: string) => {
+    setColumnWidths((prev) => {
+      const next = { ...prev, [colId]: DEFAULT_COLUMN_WIDTHS[colId] || 150 };
+      try {
+        localStorage.setItem('rm_dashboard_table_col_widths', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  const totalTableWidth = useMemo(() => {
+    return Object.values(columnWidths).reduce((a, b) => a + b, 0);
+  }, [columnWidths]);
 
   const { db, sendMessage } = useDataSource();
   const pages = useLiveQuery(async () => db.pages.toArray(), [db], [] as PageRecord[]);
@@ -426,27 +522,54 @@ export function DashboardView({
           aria-labelledby="recent-activity-heading"
           className="scroll-region mt-4 max-h-[480px] overflow-x-auto rounded-lg border border-slate-200"
         >
-          <table className="w-full border-collapse text-left text-xs">
+          <table
+            className="w-full border-collapse text-left text-xs table-fixed"
+            style={{ minWidth: `${totalTableWidth}px` }}
+          >
             <caption className="visually-hidden">
               Items synchronized with OneNote in the last 30 days
             </caption>
-            <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+            <colgroup>
+              {DASHBOARD_TABLE_COLUMNS.map((col) => (
+                <col
+                  key={col.id}
+                  style={{ width: `${columnWidths[col.id] || col.defaultWidth}px` }}
+                />
+              ))}
+            </colgroup>
+            <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-[11px] font-semibold tracking-wide text-slate-500 uppercase select-none">
               <tr>
-                <th scope="col" className="px-4 py-3">
-                  Notebook / Page
-                </th>
-                <th scope="col" className="px-4 py-3">
-                  Status
-                </th>
-                <th scope="col" className="px-4 py-3">
-                  Synced Time
-                </th>
-                <th scope="col" className="px-4 py-3">
-                  OneNote Link
-                </th>
-                <th scope="col" className="px-4 py-3 text-right">
-                  Actions
-                </th>
+                {DASHBOARD_TABLE_COLUMNS.map((col, index) => {
+                  const isLast = index === DASHBOARD_TABLE_COLUMNS.length - 1;
+                  return (
+                    <th
+                      key={col.id}
+                      scope="col"
+                      style={{ width: `${columnWidths[col.id] || col.defaultWidth}px` }}
+                      className={`relative px-4 py-3 group ${
+                        col.align === 'right' ? 'text-right' : 'text-left'
+                      }`}
+                    >
+                      <span className="truncate block" title={col.label}>
+                        {col.label}
+                      </span>
+                      {!isLast && (
+                        <div
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label={`Resize ${col.label} column width`}
+                          title="Drag to resize column width. Double-click to reset."
+                          onPointerDown={(e) => handleColResizeStart(col.id, e)}
+                          onDoubleClick={() => handleColReset(col.id)}
+                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize hover:bg-brand/20 active:bg-brand transition-colors z-20 flex items-center justify-center"
+                          style={{ touchAction: 'none' }}
+                        >
+                          <div className="h-4 w-[1px] bg-slate-300 group-hover:bg-brand group-hover:w-[2px] transition-colors" />
+                        </div>
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
@@ -466,33 +589,71 @@ export function DashboardView({
                       key={`${page.documentId}:${page.pageId}`}
                       className="transition-colors hover:bg-slate-50/70"
                     >
-                      <th scope="row" className="px-4 py-3 font-medium text-slate-900">
-                        <div className="line-clamp-1 font-medium">{page.virtualPath}</div>
-                        <div className="mt-0.5 text-[11px] font-normal text-slate-400">
+                      <th
+                        scope="row"
+                        style={{ width: `${columnWidths.item}px` }}
+                        className="px-4 py-3 font-medium text-slate-900 truncate"
+                      >
+                        <div
+                          className="truncate font-medium text-slate-900"
+                          title={page.virtualPath}
+                        >
+                          {page.virtualPath}
+                        </div>
+                        <div
+                          className="mt-0.5 truncate text-[11px] font-normal text-slate-400"
+                          title={`Page ID: ${page.pageId} | Size: ${formatFileSize(page.fileSizeBytes)}`}
+                        >
                           Page ID: {page.pageId.slice(0, 8)}... |{' '}
                           {formatFileSize(page.fileSizeBytes)}
                         </div>
                       </th>
-                      <td className="px-4 py-3">
+                      <td
+                        style={{ width: `${columnWidths.status}px` }}
+                        className="px-4 py-3 truncate"
+                        title={
+                          page.lastError
+                            ? `Status: ${page.status} - Error: ${page.lastError}`
+                            : `Status: ${page.status}`
+                        }
+                      >
                         <SyncStatusBadge status={page.status} />
                         {page.lastError ? (
-                          <p className="mt-1 line-clamp-1 text-[11px] text-rose-600">
+                          <p
+                            className="mt-1 truncate text-[11px] text-rose-600"
+                            title={page.lastError}
+                          >
                             {page.lastError}
                           </p>
                         ) : null}
                       </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {page.lastSyncTime
-                          ? formatSyncTimestamp(page.lastSyncTime)
-                          : `Modified: ${formatSyncTimestamp(page.lastModified)}`}
+                      <td
+                        style={{ width: `${columnWidths.time}px` }}
+                        className="px-4 py-3 text-slate-600 truncate"
+                        title={
+                          page.lastSyncTime
+                            ? `Last Synced: ${formatSyncTimestamp(page.lastSyncTime)}`
+                            : `Modified: ${formatSyncTimestamp(page.lastModified)}`
+                        }
+                      >
+                        <span className="truncate block">
+                          {page.lastSyncTime
+                            ? formatSyncTimestamp(page.lastSyncTime)
+                            : `Modified: ${formatSyncTimestamp(page.lastModified)}`}
+                        </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td
+                        style={{ width: `${columnWidths.link}px` }}
+                        className="px-4 py-3 truncate"
+                        title={page.oneNotePageUrl || undefined}
+                      >
                         {page.oneNotePageUrl ? (
                           <a
                             href={page.oneNotePageUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="font-medium text-brand underline underline-offset-2 hover:text-brand-hover"
+                            title={`Open in OneNote: ${page.oneNotePageUrl}`}
+                            className="font-medium text-brand underline underline-offset-2 hover:text-brand-hover truncate block"
                           >
                             Open in OneNote
                           </a>
@@ -500,7 +661,10 @@ export function DashboardView({
                           <span className="text-slate-400">-</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td
+                        style={{ width: `${columnWidths.actions}px` }}
+                        className="px-4 py-3 text-right"
+                      >
                         {active ? (
                           <button
                             type="button"

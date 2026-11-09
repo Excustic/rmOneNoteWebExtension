@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Interactive resizable table columns for the 30-day activity table in Dashboard view (`DashboardView.tsx`) with drag handles, double-click reset, minimum column width constraints, and persistent column widths in `localStorage`.
+- Full text hover tooltips (`title` attribute) on truncated text cells across the Dashboard activity table and Sync Control tree nodes / side panel headers.
+
+### Fixed
+- Vertical (portrait) PDF ink alignment: generalized physical 226 DPI himetric scaling factor (`2540 / 226`) and centered page bounding box (`-pageHalfWidth` to `+pageHalfWidth`, `yMin: 0`) across all annotated PDF pages, resolving horizontal ink shift when annotating vertical/portrait PDFs in OneNote.
+
 ## [1.0.0] - 2026-11-09
 
 ### Added

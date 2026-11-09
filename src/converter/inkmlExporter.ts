@@ -44,9 +44,11 @@ export const PDF_POINTS_PER_INCH = 72;
 export const HIMETRIC_PER_INCH = 2540;
 
 /** Physical conversion factor from `.rm` units to himetric (`2540 / 226`). */
-export const INKML_LANDSCAPE_PDF_CONV_CONSTANT = HIMETRIC_PER_INCH / RM_DPI;
+export const INKML_PDF_CONV_CONSTANT = HIMETRIC_PER_INCH / RM_DPI;
+export const INKML_LANDSCAPE_PDF_CONV_CONSTANT = INKML_PDF_CONV_CONSTANT;
 /** The PDF top edge is already `y = 0` in `.rm` space, so no vertical pad. */
-export const INKML_LANDSCAPE_PDF_Y_PAD = 0;
+export const INKML_PDF_Y_PAD = 0;
+export const INKML_LANDSCAPE_PDF_Y_PAD = INKML_PDF_Y_PAD;
 
 const XML_HEADER =
   '<?xml version="1.0" encoding="utf-8"?>\n' +
@@ -273,26 +275,25 @@ export function sceneTreeToInkMlXml(
 
   const anchorPos = buildAnchorPos(tree.rootText);
   const pdfSize = options.pdfPageSizePt;
-  const isLandscapePdf =
+  const isPdf =
     pdfSize !== undefined &&
     pdfSize !== null &&
     pdfSize.widthPt > 0 &&
-    pdfSize.heightPt > 0 &&
-    pdfSize.widthPt > pdfSize.heightPt;
+    pdfSize.heightPt > 0;
 
   let initialBox: BoundingBox;
-  if (isLandscapePdf) {
+  if (isPdf) {
     // The box must cover the whole PDF page in `.rm` units. If it were smaller
     // than the page, the leftmost stroke would widen `minX` and get pinned to
     // the page's left edge, shifting all ink horizontally.
     const rmUnitsPerPt = RM_DPI / PDF_POINTS_PER_INCH;
-    const landscapeHalfWidth = Math.round((pdfSize.widthPt / 2) * rmUnitsPerPt);
-    const landscapeHeight = Math.round(pdfSize.heightPt * rmUnitsPerPt);
+    const pageHalfWidth = Math.round((pdfSize.widthPt / 2) * rmUnitsPerPt);
+    const pageHeight = Math.round(pdfSize.heightPt * rmUnitsPerPt);
     initialBox = getBoundingBox(tree.root, anchorPos, {
-      xMin: -landscapeHalfWidth,
-      xMax: landscapeHalfWidth,
+      xMin: -pageHalfWidth,
+      xMax: pageHalfWidth,
       yMin: 0,
-      yMax: landscapeHeight,
+      yMax: pageHeight,
     });
   } else {
     initialBox = getBoundingBox(tree.root, anchorPos);
@@ -303,10 +304,10 @@ export function sceneTreeToInkMlXml(
     maxX: initialBox.xMax,
     minY: initialBox.yMin,
     maxY: initialBox.yMax,
-    widthConv: isLandscapePdf ? INKML_LANDSCAPE_PDF_CONV_CONSTANT : INKML_WIDTH_CONV_CONSTANT,
-    heightConv: isLandscapePdf ? INKML_LANDSCAPE_PDF_CONV_CONSTANT : INKML_HEIGHT_CONV_CONSTANT,
+    widthConv: isPdf ? INKML_PDF_CONV_CONSTANT : INKML_WIDTH_CONV_CONSTANT,
+    heightConv: isPdf ? INKML_PDF_CONV_CONSTANT : INKML_HEIGHT_CONV_CONSTANT,
     xPad: INKML_X_PAD,
-    yPad: isLandscapePdf ? INKML_LANDSCAPE_PDF_Y_PAD : INKML_Y_PAD,
+    yPad: isPdf ? INKML_PDF_Y_PAD : INKML_Y_PAD,
     nextTraceId: 1,
     traces: [],
   };

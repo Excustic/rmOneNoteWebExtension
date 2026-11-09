@@ -382,6 +382,7 @@ function TreeNodeRow({
             />
             <span
               id={labelTextId}
+              title={node.visibleName}
               className={`truncate text-sm font-medium ${
                 isInspected ? 'text-brand font-semibold' : 'text-slate-900'
               }`}
@@ -1198,12 +1199,18 @@ export function SyncControlView({
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <LegacyIcon name="notebook" className="h-4 w-4 shrink-0 text-violet-500" />
-                      <h2 className="truncate text-sm font-semibold text-slate-900">
+                      <h2
+                        className="truncate text-sm font-semibold text-slate-900"
+                        title={inspectedDocNode.visibleName}
+                      >
                         {inspectedDocNode.visibleName}
                       </h2>
                       <SyncStatusIcon state={inspectedDocRollup.visualState} />
                     </div>
-                    <p className="mt-1 truncate text-xs text-slate-500">
+                    <p
+                      className="mt-1 truncate text-xs text-slate-500"
+                      title={inspectedDocNode.virtualPath}
+                    >
                       {inspectedDocNode.virtualPath}
                     </p>
                   </div>

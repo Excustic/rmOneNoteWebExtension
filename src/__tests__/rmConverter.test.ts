@@ -563,6 +563,17 @@ describe('Phase 5: Native TypeScript .rm to InkML + HTML Converter', () => {
     // y = 100 + 100 (anchorY) = 200 -> 200 * (2540/226) = 2247.8 -> 2247
     expect(landscapePdfResult.inkmlXml).toContain('21567 2247 12800');
 
+    // Verify vertical (portrait) PDF coordinate origin and 226-DPI himetric alignment (e.g. 595 x 842 pt)
+    const portraitPdfResult = convertRmPage(rmBytes, {
+      pageTitle: 'Portrait Notes',
+      includeBackgroundImageRef: true,
+      pdfPageSizePt: { widthPt: 595, heightPt: 842 },
+    });
+    // portraitHalfWidth = round((595 / 2) * (226 / 72)) = 934 -> minX = -934, yPad = 0
+    // First point of Stroke 1: x = 50 -> (50 + 934) * (2540/226) = 11059
+    // y = 200 -> 200 * (2540/226) = 2247
+    expect(portraitPdfResult.inkmlXml).toContain('11059 2247 12800');
+
     // Verify Presentation HTML escaping, title, line breaks, and bold formatting
     expect(result.presentationHtml).toContain('<title>Calculus 1 - Lecture &lt;1&gt;</title>');
     expect(result.presentationHtml).toContain('data-absolute-enabled="true"');
