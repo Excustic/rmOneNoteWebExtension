@@ -172,13 +172,13 @@ export function computeRollupForPages(
 
   const isDocModifiedAfterSync = Boolean(
     lastSyncedAt &&
-      docLastModified &&
-      Date.parse(docLastModified) > Date.parse(lastSyncedAt) + 1000,
+    docLastModified &&
+    Date.parse(docLastModified) > Date.parse(lastSyncedAt) + 1000,
   );
 
   const isOutOfDate = Boolean(
     (lastSyncedAt !== null && (isDocModifiedAfterSync || anyPageOutOfDate)) ||
-      (lastSyncedAt !== null && pendingPages > 0),
+    (lastSyncedAt !== null && pendingPages > 0),
   );
 
   let visualState: VisualSyncState = 'idle';
@@ -341,11 +341,10 @@ function TreeNodeRow({
     <div>
       <div
         data-nested={depth > 0 ? 'true' : undefined}
-        className={`tree-guide-row flex flex-wrap items-center justify-between gap-2 rounded-lg px-2 py-1 transition-colors ${
-          isInspected
-            ? 'bg-blue-50/90 ring-1 ring-blue-300'
-            : 'hover:bg-slate-100/80'
-        }`}
+        className={`tree-guide-row flex flex-wrap items-center justify-between gap-2 rounded-lg px-2 py-1 transition-colors ${isInspected
+          ? 'bg-blue-50/90 ring-1 ring-blue-300'
+          : 'hover:bg-slate-100/80'
+          }`}
       >
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
           {hasChildren ? (
@@ -360,9 +359,8 @@ function TreeNodeRow({
             >
               <LegacyIcon
                 name="chevronDown"
-                className={`h-4 w-4 transition-transform ${
-                  isExpanded ? 'rotate-0' : '-rotate-90'
-                }`}
+                className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'
+                  }`}
               />
             </button>
           ) : (
@@ -402,16 +400,14 @@ function TreeNodeRow({
           >
             <LegacyIcon
               name={isFolder ? 'folder' : 'notebook'}
-              className={`h-4 w-4 shrink-0 ${
-                isFolder ? 'text-amber-500' : 'text-violet-500'
-              }`}
+              className={`h-4 w-4 shrink-0 ${isFolder ? 'text-amber-500' : 'text-violet-500'
+                }`}
             />
             <span
               id={labelTextId}
               title={node.visibleName}
-              className={`truncate text-sm font-medium ${
-                isInspected ? 'text-brand font-semibold' : 'text-slate-900'
-              }`}
+              className={`truncate text-sm font-medium ${isInspected ? 'text-brand font-semibold' : 'text-slate-900'
+                }`}
             >
               {node.visibleName}
             </span>
@@ -422,11 +418,10 @@ function TreeNodeRow({
 
             {isFolder && folderCounts && folderCounts.totalDocuments > 0 ? (
               <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                  folderCounts.selectedDocuments > 0
-                    ? 'bg-blue-100 text-blue-800'
-                    : 'bg-slate-100 text-slate-600'
-                }`}
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${folderCounts.selectedDocuments > 0
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-slate-100 text-slate-600'
+                  }`}
               >
                 {folderCounts.selectedDocuments}/{folderCounts.totalDocuments} selected
               </span>
@@ -812,11 +807,9 @@ export function SyncControlView({
       const docCount = result.savedWhitelist.syncFiles.length;
       setFeedback({
         isError: false,
-        text: `Selection saved to synced preferences (${docCount} document${
-          docCount === 1 ? '' : 's'
-        } selected, ${result.pendingPagesCount} page${
-          result.pendingPagesCount === 1 ? '' : 's'
-        } pending sync).`,
+        text: `Selection saved to synced preferences (${docCount} document${docCount === 1 ? '' : 's'
+          } selected, ${result.pendingPagesCount} page${result.pendingPagesCount === 1 ? '' : 's'
+          } pending sync).`,
       });
     } catch (err) {
       setFeedback({
@@ -832,9 +825,9 @@ export function SyncControlView({
     const permissionPromise = isDemo
       ? Promise.resolve(true)
       : requestHostOriginsFromGesture([
-          ...REMARKABLE_HOST_ORIGINS,
-          ...MICROSOFT_GRAPH_ORIGINS,
-        ]);
+        ...REMARKABLE_HOST_ORIGINS,
+        ...MICROSOFT_GRAPH_ORIGINS,
+      ]);
     setIsSyncingNow(true);
     setFeedback(null);
 
@@ -867,9 +860,9 @@ export function SyncControlView({
     const permissionPromise = isDemo
       ? Promise.resolve(true)
       : requestHostOriginsFromGesture([
-          ...REMARKABLE_HOST_ORIGINS,
-          ...MICROSOFT_GRAPH_ORIGINS,
-        ]);
+        ...REMARKABLE_HOST_ORIGINS,
+        ...MICROSOFT_GRAPH_ORIGINS,
+      ]);
     setIsSyncingNow(true);
     setFeedback(null);
 
@@ -903,9 +896,9 @@ export function SyncControlView({
     const permissionPromise = isDemo
       ? Promise.resolve(true)
       : requestHostOriginsFromGesture([
-          ...REMARKABLE_HOST_ORIGINS,
-          ...MICROSOFT_GRAPH_ORIGINS,
-        ]);
+        ...REMARKABLE_HOST_ORIGINS,
+        ...MICROSOFT_GRAPH_ORIGINS,
+      ]);
     const documentIds =
       node.type === 'CollectionType'
         ? collectSubtreeDocumentIds(node, selectionMap)
@@ -958,9 +951,9 @@ export function SyncControlView({
     const permissionPromise = isDemo
       ? Promise.resolve(true)
       : requestHostOriginsFromGesture([
-          ...REMARKABLE_HOST_ORIGINS,
-          ...MICROSOFT_GRAPH_ORIGINS,
-        ]);
+        ...REMARKABLE_HOST_ORIGINS,
+        ...MICROSOFT_GRAPH_ORIGINS,
+      ]);
     setIsSyncingNow(true);
     setFeedback(null);
 
@@ -1011,9 +1004,9 @@ export function SyncControlView({
     const permissionPromise = isDemo
       ? Promise.resolve(true)
       : requestHostOriginsFromGesture([
-          ...REMARKABLE_HOST_ORIGINS,
-          ...MICROSOFT_GRAPH_ORIGINS,
-        ]);
+        ...REMARKABLE_HOST_ORIGINS,
+        ...MICROSOFT_GRAPH_ORIGINS,
+      ]);
     setRecoveringPageId(pageId);
     setFeedback(null);
 
@@ -1132,13 +1125,12 @@ export function SyncControlView({
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-700 shadow-2xs">
             <span
-              className={`h-2 w-2 rounded-full ${
-                overview.phase === 'Error'
-                  ? 'bg-rose-500'
-                  : overview.phase !== 'Idle' || isSyncingNow
-                    ? 'animate-pulse bg-blue-500'
-                    : 'bg-emerald-500'
-              }`}
+              className={`h-2 w-2 rounded-full ${overview.phase === 'Error'
+                ? 'bg-rose-500'
+                : overview.phase !== 'Idle' || isSyncingNow
+                  ? 'animate-pulse bg-blue-500'
+                  : 'bg-emerald-500'
+                }`}
               aria-hidden="true"
             />
             <span>Engine: {isSyncingNow ? 'Syncing...' : overview.phase}</span>
@@ -1243,11 +1235,10 @@ export function SyncControlView({
               data-tour="sync-control-save-btn"
               disabled={!hasLoadedItems || isSaving || !overview.remarkablePaired}
               onClick={() => void handleSaveSelection()}
-              className={`min-h-8 rounded-md px-3.5 py-1 text-xs font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${
-                saveSuccessFlash
-                  ? 'bg-emerald-600 hover:bg-emerald-700'
-                  : 'bg-brand hover:bg-brand-hover'
-              }`}
+              className={`min-h-8 rounded-md px-3.5 py-1 text-xs font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${saveSuccessFlash
+                ? 'bg-emerald-600 hover:bg-emerald-700'
+                : 'bg-brand hover:bg-brand-hover'
+                }`}
             >
               {isSaving
                 ? 'Saving...'
@@ -1287,7 +1278,7 @@ export function SyncControlView({
               <div
                 role="group"
                 aria-label="reMarkable Cloud folder and document tree"
-                className="scroll-region min-h-[550px] max-h-[calc(100vh-210px)] space-y-0.5 p-3"
+                className="scroll-region min-h-[550px] max-h-[calc(100vh-280px)] space-y-0.5 p-3"
               >
                 {filteredRoots.map((node) => (
                   <TreeNodeRow
@@ -1322,11 +1313,10 @@ export function SyncControlView({
             }
             aria-hidden={inspectedDocNode === null}
             inert={inspectedDocNode === null ? true : undefined}
-            className={`pages-side-panel shrink-0 overflow-clip rounded-lg border border-slate-200 bg-slate-50/70 ${
-              inspectedDocNode
-                ? 'w-full opacity-100 translate-x-0 lg:w-[430px] xl:w-[470px]'
-                : 'pointer-events-none h-0 w-0 translate-x-6 border-0 opacity-0'
-            }`}
+            className={`pages-side-panel shrink-0 overflow-clip rounded-lg border border-slate-200 bg-slate-50/70 ${inspectedDocNode
+              ? 'w-full opacity-100 translate-x-0 lg:w-[430px] xl:w-[470px]'
+              : 'pointer-events-none h-0 w-0 translate-x-6 border-0 opacity-0'
+              }`}
           >
             {inspectedDocNode ? (
               <div className="flex min-h-[550px] max-h-[calc(100vh-210px)] flex-col">
@@ -1455,7 +1445,7 @@ export function SyncControlView({
                                     <SyncStatusBadge status={page.status} />
 
                                     {page.originalPageNumber &&
-                                    page.originalPageNumber !== page.pageNumber ? (
+                                      page.originalPageNumber !== page.pageNumber ? (
                                       <span
                                         className="inline-flex items-center rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800"
                                         title={`Page was reordered on tablet: was Page ${page.originalPageNumber}, now Page ${page.pageNumber}`}
@@ -1474,7 +1464,7 @@ export function SyncControlView({
                                     ) : null}
 
                                     {page.lastSyncTime &&
-                                    Date.parse(page.lastModified) > Date.parse(page.lastSyncTime) + 1000 ? (
+                                      Date.parse(page.lastModified) > Date.parse(page.lastSyncTime) + 1000 ? (
                                       <span
                                         className="inline-flex items-center rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
                                         title="This page was modified on your reMarkable tablet after the last upload to OneNote"
@@ -1556,9 +1546,8 @@ export function SyncControlView({
                           >
                             <span className="flex items-center gap-1.5">
                               <span
-                                className={`inline-block text-[10px] transition-transform ${
-                                  showDeletedPages ? 'rotate-90' : ''
-                                }`}
+                                className={`inline-block text-[10px] transition-transform ${showDeletedPages ? 'rotate-90' : ''
+                                  }`}
                                 aria-hidden="true"
                               >
                                 &rsaquo;
@@ -1577,9 +1566,9 @@ export function SyncControlView({
                                 const isRecovering = recoveringPageId === page.pageId;
                                 const isExpired = Boolean(
                                   page.lastError &&
-                                    (page.lastError.includes('expired') ||
-                                      page.lastError.toLowerCase().includes('not found') ||
-                                      page.lastError.includes('404')),
+                                  (page.lastError.includes('expired') ||
+                                    page.lastError.toLowerCase().includes('not found') ||
+                                    page.lastError.includes('404')),
                                 );
 
                                 return (
@@ -1600,7 +1589,7 @@ export function SyncControlView({
                                           Deleted on tablet
                                         </span>
                                         {page.lastSyncTime &&
-                                        Date.parse(page.lastModified) >
+                                          Date.parse(page.lastModified) >
                                           Date.parse(page.lastSyncTime) + 1000 ? (
                                           <span
                                             className="inline-flex items-center rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
@@ -1659,7 +1648,13 @@ export function SyncControlView({
                                         className="inline-flex min-h-7 items-center gap-1 rounded border border-rose-300 bg-white px-2.5 py-1 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                                       >
                                         {isRecovering ? (
-                                          <span>Recovering...</span>
+                                          <>
+                                            <LegacyIcon
+                                              name="syncCycle"
+                                              className="h-3 w-3 text-rose-500 status-spin"
+                                            />
+                                            <span>Recovering...</span>
+                                          </>
                                         ) : (
                                           <>
                                             <LegacyIcon
@@ -1701,9 +1696,8 @@ export function SyncControlView({
 
           <span
             aria-live="polite"
-            className={`font-medium ${
-              feedback?.isError ? 'text-red-700' : 'text-emerald-700'
-            }`}
+            className={`font-medium ${feedback?.isError ? 'text-red-700' : 'text-emerald-700'
+              }`}
           >
             {feedback?.text ?? ''}
           </span>

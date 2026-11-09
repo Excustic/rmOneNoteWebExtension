@@ -1081,7 +1081,8 @@ export async function recoverDeletedPage(
     return { ok: false, error: 'Page record not found in local database.' };
   }
 
-  const prefs = await getPreferences();
+  try {
+    const prefs = await getPreferences();
   const oneNoteClient =
     options.oneNoteClient ??
     new OneNoteClient({
@@ -1207,9 +1208,24 @@ export async function recoverDeletedPage(
     },
   ]);
 
-  return {
-    ok: true,
-    oneNoteUrl: verified.oneNoteUrl,
-  };
+    return {
+      ok: true,
+      oneNoteUrl: verified.oneNoteUrl,
+    };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(`[rmOneNote] Failed to recover deleted page ${documentId}/${pageId}:`, err);
+    await updatePageStatus(
+      documentId,
+      pageId,
+      'Deleted',
+      { lastError: errorMessage },
+      database,
+    );
+    return {
+      ok: false,
+      error: errorMessage,
+    };
+  }
 }
 

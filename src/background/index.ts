@@ -51,7 +51,7 @@ const DEFAULT_PERSISTED_OVERVIEW: PersistedOverviewFields = {
   lastError: DEFAULT_SYNC_OVERVIEW.lastError,
 };
 
-const VALID_REQUEST_TYPES = new Set<RuntimeRequest['type']>([
+const VALID_REQUEST_TYPES_LIST = [
   'GET_SYNC_OVERVIEW',
   'TRIGGER_MANUAL_SYNC',
   'CANCEL_SYNC_ITEM',
@@ -64,7 +64,18 @@ const VALID_REQUEST_TYPES = new Set<RuntimeRequest['type']>([
   'SIGN_IN_MICROSOFT',
   'SIGN_OUT_MICROSOFT',
   'VERIFY_MICROSOFT_SESSION',
-]);
+  'RECOVER_DELETED_PAGE',
+] as const satisfies readonly RuntimeRequest['type'][];
+
+type MissingRequestTypes = Exclude<
+  RuntimeRequest['type'],
+  (typeof VALID_REQUEST_TYPES_LIST)[number]
+>;
+// Compile-time assertion ensuring every RuntimeRequest['type'] variant is registered in the list:
+const _exhaustiveRequestTypesCheck: MissingRequestTypes extends never ? true : false = true;
+void _exhaustiveRequestTypesCheck;
+
+const VALID_REQUEST_TYPES = new Set<string>(VALID_REQUEST_TYPES_LIST);
 
 async function readSyncOverview(): Promise<SyncOverviewState> {
   const [storedResult, indexedPagesCount, warning, auth] = await Promise.all([

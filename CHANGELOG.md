@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Deleted on tablet` badge marking pages removed on the tablet while preserved in OneNote.
 
 ### Fixed
+- Recover button silent message drop in background router:
+  - The runtime background message router (`isRuntimeRequest` in `src/background/index.ts`) verified incoming messages against a `VALID_REQUEST_TYPES` set. `'RECOVER_DELETED_PAGE'` was omitted from this set, causing the background script to synchronously drop the message without invoking `recoverDeletedPage` and returning `undefined` to `SyncControlView.tsx`, triggering an immediate generic "Failed to recover deleted page" error.
+  - Added `'RECOVER_DELETED_PAGE'` to the background router with a compile-time exhaustiveness check (`_exhaustiveRequestTypesCheck`) ensuring every `RuntimeRequest['type']` union variant must be present in the router list.
+  - Added comprehensive `try ... catch` error logging and `lastError` persistence in `recoverDeletedPage` to ensure all recovery failures surface descriptive feedback in the UI.
+  - Added spinning sync cycle icon animation while recovery is in flight on the Recover button.
 - Out-of-order page uploads in multi-page OneNote sections:
   - While mutual exclusion existed on section page creation, workers with higher concurrency arrived out of sequence when smaller/simpler pages finished `.rm` download and conversion faster than earlier pages, causing Microsoft Graph to timestamp and order pages out of sequence (e.g. `Page 2` created before `Page 1`).
   - Implemented pre-created sequential in-order creation barriers per document (`pageCreationGates` in `syncEngine.ts`). Workers download and convert `.rm` files and background PDFs concurrently across workers, but each worker awaits the creation barrier of the preceding page of the same document before calling Microsoft Graph `uploadInkMlPage`.
