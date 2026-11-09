@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Deleted on tablet` badge marking pages removed on the tablet while preserved in OneNote.
 
 ### Fixed
+- Root-level notebook grouping into OneNote container:
+  - Root-level reMarkable notebooks (items not placed inside any folder) now group into a consolidated OneNote notebook (default: 'Documents' -> 'rm_Documents') where each root notebook becomes a section, rather than each root item spawning an isolated OneNote notebook.
+  - Allowed leaving the root container setting blank in Settings (`targetSection: ''`) if users prefer converting root notebooks into individual OneNote notebooks (`rm_<NotebookName>`).
 - Recovered page containment and status tags:
   - When a deleted page was recovered, `recordSyncedPagesInLedger` triggered cross-PC ledger reconciliation, which unconditionally overwrote the page's status in IndexedDB from `'Deleted'` to `'Uploaded'`, moving it out of `Deleted Pages` back into the active pages list of the original notebook.
   - Updated `reconcileSyncLedgerToDexie` in `src/storage/syncLedger.ts` to preserve `status: 'Deleted'`, and removed ledger registration from `recoverDeletedPage` so tablet-deleted pages permanently stay confined to the `Deleted Pages` list.

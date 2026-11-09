@@ -49,12 +49,26 @@ describe('Phase 6: Microsoft Graph OneNote Client, Throttling, and Directory Cac
     expect(sanitizeOneNoteDisplayName('A'.repeat(70))).toHaveLength(49);
 
     expect(parseVirtualPathToOneNoteTarget('')).toEqual({
-      notebookName: 'rm_Uncategorized',
-      sectionName: 'Default',
+      notebookName: 'rm_Documents',
+      sectionName: 'Documents',
       pageTitle: 'Untitled',
     });
 
+    expect(parseVirtualPathToOneNoteTarget('', '')).toEqual({
+      notebookName: 'rm_Uncategorized',
+      sectionName: 'Untitled',
+      pageTitle: 'Untitled',
+    });
+
+    // Default container: root notebooks appear as sections inside rm_Documents
     expect(parseVirtualPathToOneNoteTarget('Quick sheets/Page 1')).toEqual({
+      notebookName: 'rm_Documents',
+      sectionName: 'Quick sheets',
+      pageTitle: 'Page 1',
+    });
+
+    // Blank container: root notebooks convert to their own OneNote notebooks
+    expect(parseVirtualPathToOneNoteTarget('Quick sheets/Page 1', '')).toEqual({
       notebookName: 'rm_Quick sheets',
       sectionName: 'Quick sheets',
       pageTitle: 'Page 1',

@@ -68,38 +68,53 @@ export function sanitizeOneNoteDisplayName(rawName: string): string {
 
 /**
  * Translates a reMarkable virtual path (for example
- * `"Academy/BachelorPhysCS/Year1/Semester A/Calculus 1/Page 40"`) into the
+ * `"Academy/BachelorPhysCS/Year1/Semester A/Calculus 1/Page 40"` or `"Testbook2/Page 1"`) into the
  * target OneNote `{ notebookName, sectionName, pageTitle }`.
- * Matches `SyncService.ParseVirtualPath` in the legacy C# client.
+ *
+ * For root-level reMarkable notebooks (not in any folder, i.e. 2 path segments like `"Testbook2/Page 1"`):
+ * - If `rootNotebookContainer` is specified (default: `'Documents'`), all root notebooks appear
+ *   as sections inside a consolidated OneNote notebook (e.g. `rm_Documents`).
+ * - If `rootNotebookContainer` is left blank (`''`), each root notebook converts into
+ *   its own OneNote notebook (e.g. `rm_Testbook2`) with a section of the same name.
  */
 export function parseVirtualPathToOneNoteTarget(
   virtualPath: string,
-  defaultRootSection = 'Default'
+  rootNotebookContainer = 'Documents'
 ): OneNoteTargetPath {
   const parts = virtualPath
     .split('/')
     .map((segment) => segment.trim())
     .filter((segment) => segment.length > 0);
 
+  const trimmedContainer = rootNotebookContainer ? rootNotebookContainer.trim() : '';
+
   if (parts.length === 0) {
     return {
-      notebookName: 'rm_Uncategorized',
-      sectionName: sanitizeOneNoteDisplayName(defaultRootSection),
+      notebookName: trimmedContainer
+        ? sanitizeOneNoteDisplayName(`rm_${trimmedContainer}`)
+        : 'rm_Uncategorized',
+      sectionName: trimmedContainer
+        ? sanitizeOneNoteDisplayName(trimmedContainer)
+        : 'Untitled',
       pageTitle: 'Untitled',
     };
   }
 
   if (parts.length === 1) {
     return {
-      notebookName: 'rm_Uncategorized',
-      sectionName: sanitizeOneNoteDisplayName(defaultRootSection),
-      pageTitle: parts[0],
+      notebookName: trimmedContainer
+        ? sanitizeOneNoteDisplayName(`rm_${trimmedContainer}`)
+        : sanitizeOneNoteDisplayName(`rm_${parts[0]}`),
+      sectionName: sanitizeOneNoteDisplayName(parts[0]),
+      pageTitle: 'Untitled',
     };
   }
 
   if (parts.length === 2) {
     return {
-      notebookName: sanitizeOneNoteDisplayName(`rm_${parts[0]}`),
+      notebookName: trimmedContainer
+        ? sanitizeOneNoteDisplayName(`rm_${trimmedContainer}`)
+        : sanitizeOneNoteDisplayName(`rm_${parts[0]}`),
       sectionName: sanitizeOneNoteDisplayName(parts[0]),
       pageTitle: parts[1],
     };

@@ -15,7 +15,10 @@ export interface UserPreferences {
   autoSync: boolean;
   /** Automatically include newly created notebooks inside whitelisted folders. */
   autoAddNewFiles: boolean;
-  /** Fallback OneNote section name for root-level documents. */
+  /**
+   * Target OneNote notebook container name for root-level reMarkable notebooks (default: 'Documents' -> 'rm_Documents').
+   * If left blank, each root notebook is created as its own OneNote notebook ('rm_<NotebookName>').
+   */
   targetSection: string;
   /** Maximum per-page Graph API upload retry attempts before marking `Failed`. */
   maxRetries: number;
@@ -90,7 +93,7 @@ function normalizePreferences(raw: Partial<UserPreferences> | undefined): UserPr
   }
 
   const section =
-    typeof raw.targetSection === 'string' && raw.targetSection.trim()
+    typeof raw.targetSection === 'string'
       ? raw.targetSection.trim()
       : DEFAULT_USER_PREFERENCES.targetSection;
 

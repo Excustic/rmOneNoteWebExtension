@@ -213,17 +213,17 @@ export function SettingsView({
 
           <div>
             <label htmlFor="target-section" className="block text-sm font-medium text-slate-700">
-              Default OneNote section
+              Root notebooks container
             </label>
             <span id="target-section-hint" className="mt-0.5 block text-xs text-slate-500">
-              Used when syncing root-level reMarkable notebooks that are not inside a folder.
+              Target OneNote notebook for root-level reMarkable notebooks (default: Documents &rarr; rm_Documents, with root notebooks as sections). Leave blank to convert each root notebook into its own OneNote notebook.
             </span>
             <input
               id="target-section"
               name="targetSection"
               type="text"
               maxLength={49}
-              required
+              placeholder="Documents (leave blank for individual notebooks)"
               value={prefs.targetSection}
               onChange={(e) =>
                 setPrefs((prev) => ({
@@ -232,7 +232,7 @@ export function SettingsView({
                 }))
               }
               aria-describedby="target-section-hint"
-              className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-2xs"
+              className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-2xs placeholder:text-slate-400"
             />
           </div>
 

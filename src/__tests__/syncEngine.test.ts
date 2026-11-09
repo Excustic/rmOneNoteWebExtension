@@ -560,6 +560,7 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
       return new Response(`Unhandled ${method} ${url}`, { status: 500 });
     };
 
+    await updatePreferences({ targetSection: '' });
     const summary = await runSyncCycle({
       database: testDb,
       fetchImpl: mockFetch,
@@ -719,7 +720,7 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
       return new Response(JSON.stringify({ value: [] }), { status: 200 });
     };
 
-    await updatePreferences({ pageSyncStrategy: 'mirror', targetSection: 'Default' });
+    await updatePreferences({ pageSyncStrategy: 'mirror', targetSection: '' });
     await setWhitelist({ syncFiles: [DOC_ID], syncFolders: [] });
 
     // Seed a page that was moved from Page 9 to Page 3 without stroke changes (titleRenameOnly)
@@ -763,6 +764,7 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
   });
 
   it('recovers a deleted page to a dedicated (Recovered) section with revision disambiguation', async () => {
+    await updatePreferences({ targetSection: '' });
     let createdSectionName = '';
     let uploadedTitle = '';
     const minimalBytes = buildMinimalRmV3Bytes();
@@ -1053,5 +1055,126 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
 
     expect(summary.uploadedCount).toBe(2);
     expect(createdPageTitles).toEqual(['Page 1', 'Page 2']);
+  });
+
+  it('syncs root-level notebooks into rm_Documents container with root notebooks as sections by default', async () => {
+    const rmBytes = buildMinimalRmV3Bytes();
+    const cloudBlobs: Record<string, string | Uint8Array> = {
+      root_hash: [
+        '4',
+        '0:.:1:8000',
+        `sub_doc_root:80000000:${DOC_ID}:4:8000`,
+      ].join('\n'),
+      sub_doc_root: [
+        '4',
+        '0:.:3:8000',
+        `meta_doc_root:0:${DOC_ID}.metadata:0:150`,
+        `content_doc_root:0:${DOC_ID}.content:0:300`,
+        `rm_root_p1:0:${DOC_ID}/${PAGE_1_ID}.rm:0:${rmBytes.byteLength}`,
+      ].join('\n'),
+      meta_doc_root: JSON.stringify({
+        visibleName: 'RootBook',
+        type: 'DocumentType',
+        parent: '',
+        lastModified: String(Date.now() - 60_000),
+        version: 1,
+      }),
+      content_doc_root: JSON.stringify({
+        cPages: {
+          pages: [{ id: PAGE_1_ID, idx: { timestamp: '1:1', value: 'aa' } }],
+        },
+      }),
+      rm_root_p1: rmBytes,
+    };
+
+    const mockFetch: typeof fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const method = (init?.method ?? 'GET').toUpperCase();
+
+      if (url === REMARKABLE_SYNC_ROOT_URL) {
+        return new Response(JSON.stringify({ hash: 'root_hash', generation: 1, schemaVersion: 4 }), { status: 200 });
+      }
+      if (url.startsWith(`${REMARKABLE_SYNC_FILES_URL}/`)) {
+        const hash = decodeURIComponent(url.slice(`${REMARKABLE_SYNC_FILES_URL}/`.length));
+        const data = cloudBlobs[hash];
+        if (data) {
+          const body = typeof data === 'string' ? data : (data as unknown as BodyInit);
+          return new Response(body, { status: 200 });
+        }
+        return new Response('Not Found', { status: 404 });
+      }
+
+      const parsedUrl = new URL(url);
+      const path = parsedUrl.pathname.replace(/^\/v1\.0\/me\/onenote/, '');
+
+      if (path === '/notebooks' && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            value: [
+              {
+                id: 'nb-docs',
+                displayName: 'rm_Documents',
+                sections: [{ id: 'sec-root-book', displayName: 'RootBook' }],
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (path === '/notebooks' && method === 'POST') {
+        const body = JSON.parse(String(init?.body ?? '{}'));
+        return new Response(
+          JSON.stringify({ id: 'nb-docs', displayName: body.displayName }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (path === '/notebooks/nb-docs/sections' && method === 'POST') {
+        const body = JSON.parse(String(init?.body ?? '{}'));
+        return new Response(
+          JSON.stringify({ id: 'sec-root-book', displayName: body.displayName }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (path === '/sections/sec-root-book/pages' && method === 'GET') {
+        return new Response(JSON.stringify({ value: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (path === '/sections/sec-root-book/pages' && method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            id: 'on-pg-root-1',
+            title: 'Page 1',
+            links: { oneNoteWebUrl: { href: 'https://onenote.com/test' } },
+          }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (path.includes('/pages/on-pg-root-1') && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            id: 'on-pg-root-1',
+            links: { oneNoteWebUrl: { href: 'https://onenote.com/test' } },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      return new Response(JSON.stringify({ value: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await updatePreferences({ targetSection: 'Documents' });
+    await setWhitelist({ syncFiles: [DOC_ID], syncFolders: [] });
+
+    const summary = await runSyncCycle({
+      database: testDb,
+      fetchImpl: mockFetch,
+      phantomLinkPollDelaysMs: [0],
+    });
+
+    expect(summary.uploadedCount).toBe(1);
+    const updated = await getPage(DOC_ID, PAGE_1_ID, testDb);
+    expect(updated?.status).toBe('Uploaded');
   });
 });

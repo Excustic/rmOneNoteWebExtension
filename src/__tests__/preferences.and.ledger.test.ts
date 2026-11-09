@@ -68,11 +68,14 @@ describe('UserPreferences, chunked Whitelists, and Cross-PC Rolling Sync Ledger'
     });
 
     expect(saved.syncIntervalMinutes).toBe(1);
-    expect(saved.targetSection).toBe('Documents');
+    expect(saved.targetSection).toBe('');
     expect(saved.maxRetries).toBe(10);
     expect(saved.autoSync).toBe(false);
     expect(saved.containerWidthPx).toBe(760);
     expect(saved.syncConcurrency).toBe(5);
+
+    const custom = await updatePreferences({ targetSection: 'Personal' });
+    expect(custom.targetSection).toBe('Personal');
 
     const minWorkers = await updatePreferences({ syncConcurrency: 0 });
     expect(minWorkers.syncConcurrency).toBe(1);
