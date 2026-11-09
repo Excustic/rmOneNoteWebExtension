@@ -2,6 +2,8 @@
 
 Serverless Manifest V3 browser extension for autonomously syncing notebooks and handwritten ink from reMarkable Cloud to Microsoft OneNote across Chrome, Edge, Firefox, and Opera.
 
+![alt text](public/images/demo.png)
+
 ## Architecture Overview
 
 This project migrates the desktop `rmOneNoteSync` daemon into a pure browser extension:

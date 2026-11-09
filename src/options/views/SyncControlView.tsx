@@ -1637,15 +1637,18 @@ export function SyncControlView({
                                           isEngineBusy ||
                                           !overview.isConfigured ||
                                           isRecovering ||
-                                          isExpired
+                                          isExpired ||
+                                          page.oneNotePageId != null
                                         }
                                         onClick={() =>
                                           void handleRecoverPage(page.documentId, page.pageId)
                                         }
                                         title={
-                                          isExpired
-                                            ? 'Page content has expired on reMarkable Cloud and cannot be recovered'
-                                            : 'Upload to dedicated (Recovered) OneNote section'
+                                          page.oneNotePageId != null
+                                            ? 'Page already recovered to OneNote'
+                                            : isExpired
+                                              ? 'Page content has expired on reMarkable Cloud and cannot be recovered'
+                                              : 'Upload to dedicated (Recovered) OneNote section'
                                         }
                                         className="inline-flex min-h-7 items-center gap-1 rounded border border-rose-300 bg-white px-2.5 py-1 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                                       >
@@ -1657,6 +1660,8 @@ export function SyncControlView({
                                             />
                                             <span>Recovering...</span>
                                           </>
+                                        ) : page.oneNotePageId != null ? (
+                                          <span>Recovered</span>
                                         ) : (
                                           <>
                                             <LegacyIcon

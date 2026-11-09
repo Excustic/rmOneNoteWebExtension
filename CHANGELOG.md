@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] - 2026-11-09
 
 ### Added
 - Per-section page creation queue mutex (`sectionPagesMutex` in `syncEngine.ts`): enforces strict ascending chronological creation order on Microsoft Graph so pages are created in natural order (`Page 1`, `Page 2`, `Page 3`) without race conditions caused by smaller pages finishing faster than larger pages, while keeping single-page and distinct-notebook sync non-blocking.

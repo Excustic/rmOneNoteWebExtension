@@ -32,7 +32,7 @@ export function Sidebar({ activeRoute, isConfigured, onStartTour }: SidebarProps
             <p className="text-base font-bold leading-tight text-white">reMarkable</p>
             <p className="mt-0.5 text-xs text-slate-400">OneNote Sync</p>
             <span className="mt-1 inline-block rounded bg-sidebar-active px-1.5 py-0.5 text-[10px] font-medium text-slate-300">
-              v1.0.0
+              v1.1.0
             </span>
           </div>
         </div>
