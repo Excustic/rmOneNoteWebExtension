@@ -579,9 +579,8 @@ export function DashboardView({
                       key={col.id}
                       scope="col"
                       style={{ width: `${columnWidths[col.id] || col.defaultWidth}px` }}
-                      className={`relative px-4 py-3 group ${
-                        col.align === 'right' ? 'text-right' : 'text-left'
-                      }`}
+                      className={`relative px-4 py-3 group ${col.align === 'right' ? 'text-right' : 'text-left'
+                        }`}
                     >
                       <span className="truncate block" title={col.label}>
                         {col.label}
@@ -656,7 +655,7 @@ export function DashboardView({
                           )}
 
                           {page.originalPageNumber &&
-                          page.originalPageNumber !== page.pageNumber ? (
+                            page.originalPageNumber !== page.pageNumber ? (
                             <span
                               className="inline-flex items-center rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800"
                               title={`Page was reordered on tablet: was Page ${page.originalPageNumber}, now Page ${page.pageNumber}`}
@@ -684,7 +683,7 @@ export function DashboardView({
                           ) : null}
 
                           {page.lastSyncTime &&
-                          Date.parse(page.lastModified) > Date.parse(page.lastSyncTime) + 1000 ? (
+                            Date.parse(page.lastModified) > Date.parse(page.lastSyncTime) + 1000 ? (
                             <span
                               className="inline-flex items-center rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
                               title="This page was modified on your reMarkable tablet after the last upload to OneNote"
