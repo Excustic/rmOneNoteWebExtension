@@ -213,10 +213,10 @@ export function SettingsView({
 
           <div>
             <label htmlFor="target-section" className="block text-sm font-medium text-slate-700">
-              Root notebooks container
+              Root notebooks Conversion
             </label>
             <span id="target-section-hint" className="mt-0.5 block text-xs text-slate-500">
-              Target OneNote notebook for root-level reMarkable notebooks (default: Documents &rarr; rm_Documents, with root notebooks as sections). Leave blank to convert each root notebook into its own OneNote notebook.
+              Choose a name for the OneNote notebook that will store the converted notebooks at root-level (homescreen). If left blank, each root notebook will be converted into its own OneNote notebook.
             </span>
             <input
               id="target-section"
@@ -241,15 +241,13 @@ export function SettingsView({
               htmlFor="max-section-pages-query-limit"
               className="block text-sm font-medium text-slate-700"
             >
-              OneNote section scan limit ($top)
+              OneNote section scan limit
             </label>
             <span
               id="max-section-pages-query-limit-hint"
               className="mt-0.5 block text-xs text-slate-500"
             >
-              Maximum existing pages to scan per OneNote section (in batches of 100) to detect already-synced
-              pages and eliminate duplicates. Defaults to 300 pages (range: 20 – 1000). Setting this to 300
-              ensures large notebooks are fully scanned so older or appended pages are not duplicated.
+              Notebook pages limit. Defaults to 300 pages (range: 20 – 1000). If limit is reached, synchronisation isn't guaranteed for all pages, and duplicates may appear.
             </span>
             <input
               id="max-section-pages-query-limit"
@@ -295,15 +293,15 @@ export function SettingsView({
               className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-2xs"
             >
               <option value="mirror">
-                Mirror reMarkable lifecycle (Recommended) - Auto-delete deleted pages &amp; rename reordered pages
+                Mirror reMarkable lifecycle (Recommended)
               </option>
               <option value="preserve">
-                Preserve OneNote history (Static / Append-only) - Never delete; append (1), (2) on title conflicts
+                Preserve OneNote history (Static / Append-only)
               </option>
             </select>
             <p className="mt-1 text-xs text-slate-500">
               {prefs.pageSyncStrategy === 'mirror'
-                ? 'Mirror mode automatically deletes OneNote pages when they are removed on your tablet, and updates OneNote page titles via lightweight Graph rename commands when pages are reordered.'
+                ? 'Mirror mode automatically deletes OneNote pages when they are removed on your tablet, and updates OneNote page titles when pages are reordered.'
                 : 'Preserve mode keeps OneNote completely static. OneNote pages are never deleted, reordered pages do not overwrite existing pages (page title collisions are suffixed with count numbers), and tablet status is indicated in Sync Control.'}
             </p>
           </div>
@@ -316,8 +314,8 @@ export function SettingsView({
               Concurrent upload workers
             </label>
             <span id="sync-concurrency-hint" className="mt-0.5 block text-xs text-slate-500">
-              Number of simultaneous page conversion and upload workers (range: 1 – 5, default: 3).
-              Setting to 1 processes pages strictly sequentially one by one.
+              Number of simultaneous page upload workers (range: 1 – 5, default: 3).
+              Setting to 1 processes pages strictly sequentially one by one. A higher value may result in more frequent upload failures due to OneNote limits.
             </span>
             <input
               id="sync-concurrency-input"

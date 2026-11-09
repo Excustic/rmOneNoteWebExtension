@@ -2,6 +2,7 @@ export { parseSync15Index } from './indexParser';
 export {
   buildFileTreeHierarchy,
   collectVirtualPaths,
+  deriveDeterministicPdfPageUuid,
   extractOrderedPageIdsFromContent,
   isItemInTrash,
   normalizeRemarkableTimestamp,

@@ -94,6 +94,8 @@ export interface ExtractedContentPages {
    * is an inserted blank page inside a PDF that has no `redir` target).
    */
   pdfPageIndices: Array<number | null>;
+  /** Total number of pages declared in the `.content` payload for PDF documents. */
+  pageCount?: number;
 }
 
 /**
@@ -130,6 +132,11 @@ function parseContentPageList(rawJson: string): ExtractedContentPages {
       ({ entry }) => typeof entry.redir?.value === 'number' && Number.isFinite(entry.redir.value),
     );
 
+    const pageCount =
+      typeof parsed.pageCount === 'number' && Number.isInteger(parsed.pageCount) && parsed.pageCount > 0
+        ? parsed.pageCount
+        : undefined;
+
     return {
       hasExplicitPageList: true,
       orderedPageIds: indexed.map(({ entry }) => entry.id!.trim()),
@@ -142,6 +149,7 @@ function parseContentPageList(rawJson: string): ExtractedContentPages {
         }
         return i;
       }),
+      pageCount,
     };
   }
 
@@ -172,18 +180,40 @@ function parseContentPageList(rawJson: string): ExtractedContentPages {
         }
       }
     }
+    const pageCount =
+      typeof parsed.pageCount === 'number' && Number.isInteger(parsed.pageCount) && parsed.pageCount > 0
+        ? parsed.pageCount
+        : undefined;
+
     return {
       hasExplicitPageList: true,
       orderedPageIds: ids,
       pdfPageIndices,
+      pageCount,
     };
   }
+
+  const pageCount =
+    typeof parsed.pageCount === 'number' && Number.isInteger(parsed.pageCount) && parsed.pageCount > 0
+      ? parsed.pageCount
+      : undefined;
 
   return {
     hasExplicitPageList: false,
     orderedPageIds: [],
     pdfPageIndices: [],
+    pageCount,
   };
+}
+
+/**
+ * Generates a deterministic RFC 4122 v4-formatted UUID for an unannotated PDF page
+ * based on the document's UUID and 0-based PDF page index.
+ */
+export function deriveDeterministicPdfPageUuid(documentId: string, pdfPageIndex: number): string {
+  const cleanDocId = documentId.toLowerCase().replace(/[^0-9a-f]/g, '').padEnd(32, '0');
+  const indexHex = (pdfPageIndex >>> 0).toString(16).padStart(8, '0');
+  return `${cleanDocId.slice(0, 8)}-${cleanDocId.slice(8, 12)}-4${cleanDocId.slice(13, 16)}-8${cleanDocId.slice(17, 20)}-0000${indexHex}`;
 }
 
 /**
@@ -214,9 +244,125 @@ export function resolveDocumentRmPages(
     }
   }
 
-  const { hasExplicitPageList, orderedPageIds, pdfPageIndices } = rawContentJson
+  const { hasExplicitPageList, orderedPageIds, pdfPageIndices, pageCount } = rawContentJson
     ? parseContentPageList(rawContentJson)
-    : { hasExplicitPageList: false, orderedPageIds: [], pdfPageIndices: [] };
+    : { hasExplicitPageList: false, orderedPageIds: [], pdfPageIndices: [], pageCount: undefined };
+
+  if (pdfBlobHash !== null) {
+    let maxPdfIndex = -1;
+    for (const idx of pdfPageIndices) {
+      if (typeof idx === 'number' && Number.isInteger(idx) && idx > maxPdfIndex) {
+        maxPdfIndex = idx;
+      }
+    }
+    const declaredPageCount =
+      typeof pageCount === 'number' && Number.isInteger(pageCount) && pageCount > 0
+        ? pageCount
+        : 0;
+    const totalPdfPages =
+      declaredPageCount > 0
+        ? Math.max(declaredPageCount, maxPdfIndex + 1)
+        : maxPdfIndex >= 0
+          ? maxPdfIndex + 1
+          : orderedPageIds.length;
+
+    if (totalPdfPages > 0) {
+      interface ExplicitItem {
+        pageId: string;
+        rmEntry?: Sync15IndexEntry;
+        pdfPageIndex: number | null;
+      }
+      const explicitPages: ExplicitItem[] = [];
+      const claimedPdfIndices = new Set<number>();
+      const seenPageIds = new Set<string>();
+
+      for (let i = 0; i < orderedPageIds.length; i++) {
+        const pageId = orderedPageIds[i];
+        if (seenPageIds.has(pageId)) {
+          continue;
+        }
+        seenPageIds.add(pageId);
+        const rmEntry = rmEntriesByPageId.get(pageId);
+        const rawIdx = pdfPageIndices[i];
+        const pdfIdx =
+          typeof rawIdx === 'number' && Number.isInteger(rawIdx) && rawIdx >= 0
+            ? rawIdx
+            : null;
+        if (pdfIdx !== null) {
+          claimedPdfIndices.add(pdfIdx);
+        }
+        explicitPages.push({ pageId, rmEntry, pdfPageIndex: pdfIdx });
+      }
+
+      if (orderedPageIds.length === 0 && rmEntriesByPageId.size > 0) {
+        let fallbackPdfIdx = 0;
+        for (const [pageId, rmEntry] of rmEntriesByPageId.entries()) {
+          claimedPdfIndices.add(fallbackPdfIdx);
+          explicitPages.push({ pageId, rmEntry, pdfPageIndex: fallbackPdfIdx++ });
+        }
+      }
+
+      // Identify unclaimed PDF page indices from 0 up to totalPdfPages - 1
+      const unclaimedIndices: number[] = [];
+      for (let p = 0; p < totalPdfPages; p++) {
+        if (!claimedPdfIndices.has(p)) {
+          unclaimedIndices.push(p);
+        }
+      }
+
+      // Merge explicit pages and unclaimed PDF pages in order
+      const resolved: ResolvedRemarkablePage[] = [];
+      let unclaimedCursor = 0;
+
+      for (const explicit of explicitPages) {
+        if (explicit.pdfPageIndex !== null) {
+          while (
+            unclaimedCursor < unclaimedIndices.length &&
+            unclaimedIndices[unclaimedCursor] < explicit.pdfPageIndex
+          ) {
+            const p = unclaimedIndices[unclaimedCursor++];
+            const pageNumber = String(resolved.length + 1);
+            resolved.push({
+              pageId: deriveDeterministicPdfPageUuid(documentId, p),
+              pageNumber,
+              title: `Page ${pageNumber}`,
+              rmBlobHash: '',
+              fileSizeBytes: 0,
+              pdfBlobHash,
+              pdfPageIndex: p,
+            });
+          }
+        }
+
+        const pageNumber = String(resolved.length + 1);
+        resolved.push({
+          pageId: explicit.pageId,
+          pageNumber,
+          title: `Page ${pageNumber}`,
+          rmBlobHash: explicit.rmEntry ? explicit.rmEntry.hash : '',
+          fileSizeBytes: explicit.rmEntry ? explicit.rmEntry.size : 0,
+          pdfBlobHash,
+          pdfPageIndex: explicit.pdfPageIndex,
+        });
+      }
+
+      while (unclaimedCursor < unclaimedIndices.length) {
+        const p = unclaimedIndices[unclaimedCursor++];
+        const pageNumber = String(resolved.length + 1);
+        resolved.push({
+          pageId: deriveDeterministicPdfPageUuid(documentId, p),
+          pageNumber,
+          title: `Page ${pageNumber}`,
+          rmBlobHash: '',
+          fileSizeBytes: 0,
+          pdfBlobHash,
+          pdfPageIndex: p,
+        });
+      }
+
+      return resolved;
+    }
+  }
 
   if (!hasExplicitPageList && rmEntriesByPageId.size === 0) {
     return [];
@@ -234,20 +380,12 @@ export function resolveDocumentRmPages(
 
     const rmEntry = rmEntriesByPageId.get(pageId);
     const pageNumber = String(i + 1);
-    const pdfPageIndex =
-      pdfBlobHash !== null ? (pdfPageIndices[i] !== undefined ? pdfPageIndices[i] : i) : null;
     resolved.push({
       pageId,
       pageNumber,
       title: `Page ${pageNumber}`,
       rmBlobHash: rmEntry ? rmEntry.hash : '',
       fileSizeBytes: rmEntry ? rmEntry.size : 0,
-      ...(pdfBlobHash !== null
-        ? {
-            pdfBlobHash,
-            pdfPageIndex,
-          }
-        : {}),
     });
   }
 
@@ -255,7 +393,6 @@ export function resolveDocumentRmPages(
   if (!hasExplicitPageList) {
     let fallbackNumber = 1;
     for (const [pageId, rmEntry] of rmEntriesByPageId.entries()) {
-      const zeroBasedIndex = fallbackNumber - 1;
       const pageNumber = String(fallbackNumber++);
       resolved.push({
         pageId,
@@ -263,12 +400,6 @@ export function resolveDocumentRmPages(
         title: `Page ${pageNumber}`,
         rmBlobHash: rmEntry.hash,
         fileSizeBytes: rmEntry.size,
-        ...(pdfBlobHash !== null
-          ? {
-              pdfBlobHash,
-              pdfPageIndex: zeroBasedIndex,
-            }
-          : {}),
       });
     }
   }

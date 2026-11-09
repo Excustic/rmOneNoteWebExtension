@@ -575,8 +575,9 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
     const insertedPagePayload = uploadedMultipartPayloads.find((p) =>
       p.includes('<title>Page 1</title>'),
     )!;
+    // Page 2 is synthesized for unannotated PDF page index 0; annotated PDF page index 1 is Page 3.
     const annotatedPdfPagePayload = uploadedMultipartPayloads.find((p) =>
-      p.includes('<title>Page 2</title>'),
+      p.includes('<title>Page 3</title>'),
     )!;
 
     // Inserted blank note page has no PDF background part

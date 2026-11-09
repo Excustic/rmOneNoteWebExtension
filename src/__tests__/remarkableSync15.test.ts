@@ -5,6 +5,7 @@ import { deriveOneNoteNotebookName, type PageRecord } from '../db/models';
 import { computeRollupForPages } from '../options/views/SyncControlView';
 import {
   buildFileTreeHierarchy,
+  deriveDeterministicPdfPageUuid,
   deriveInitialSelectionMap,
   downloadPageRmBytes,
   extractOrderedPageIdsFromContent,
@@ -314,6 +315,90 @@ describe('Sync15 index and metadata parsers', () => {
         pdfPageIndex: 1,
       },
     ]);
+
+    // Synthesizes all pages for a completely unannotated PDF using pageCount
+    const unannotatedPdfEntries = parseSync15Index(
+      [
+        '4',
+        '0:.:2:12120',
+        `h_meta:0:${DOC_CALCULUS_ID}.metadata:0:120`,
+        `h_pdf_blob:0:${DOC_CALCULUS_ID}.pdf:0:12000`,
+      ].join('\n'),
+    ).entries;
+
+    const unannotatedPdfContent = JSON.stringify({
+      fileType: 'pdf',
+      pageCount: 3,
+      cPages: { pages: [] },
+    });
+
+    const unannotatedResolved = resolveDocumentRmPages(
+      DOC_CALCULUS_ID,
+      unannotatedPdfEntries,
+      unannotatedPdfContent,
+    );
+    expect(unannotatedResolved).toHaveLength(3);
+    expect(unannotatedResolved[0]).toEqual({
+      pageId: deriveDeterministicPdfPageUuid(DOC_CALCULUS_ID, 0),
+      pageNumber: '1',
+      title: 'Page 1',
+      rmBlobHash: '',
+      fileSizeBytes: 0,
+      pdfBlobHash: 'h_pdf_blob',
+      pdfPageIndex: 0,
+    });
+    expect(unannotatedResolved[2]).toEqual({
+      pageId: deriveDeterministicPdfPageUuid(DOC_CALCULUS_ID, 2),
+      pageNumber: '3',
+      title: 'Page 3',
+      rmBlobHash: '',
+      fileSizeBytes: 0,
+      pdfBlobHash: 'h_pdf_blob',
+      pdfPageIndex: 2,
+    });
+
+    // Synthesizes unannotated pages around a sparse annotated page in a 5-page PDF
+    const sparsePdfEntries = parseSync15Index(
+      [
+        '4',
+        '0:.:3:15320',
+        `h_meta:0:${DOC_CALCULUS_ID}.metadata:0:120`,
+        `h_pdf_blob:0:${DOC_CALCULUS_ID}.pdf:0:12000`,
+        `h_pdf_p4_rm:0:${DOC_CALCULUS_ID}/${PAGE_2_ID}.rm:0:3200`,
+      ].join('\n'),
+    ).entries;
+
+    const sparsePdfContent = JSON.stringify({
+      fileType: 'pdf',
+      pageCount: 5,
+      cPages: {
+        pages: [
+          // Only PDF Page 4 (0-based redir.value = 3) is present in cPages
+          { id: PAGE_2_ID, idx: { timestamp: '1:1', value: 'ba' }, redir: { timestamp: '1:1', value: 3 } },
+        ],
+      },
+    });
+
+    const sparseResolved = resolveDocumentRmPages(
+      DOC_CALCULUS_ID,
+      sparsePdfEntries,
+      sparsePdfContent,
+    );
+    expect(sparseResolved).toHaveLength(5);
+    expect(sparseResolved.map((p) => p.pageNumber)).toEqual(['1', '2', '3', '4', '5']);
+    expect(sparseResolved[0].fileSizeBytes).toBe(0);
+    expect(sparseResolved[0].pdfPageIndex).toBe(0);
+    expect(sparseResolved[3]).toEqual({
+      pageId: PAGE_2_ID,
+      pageNumber: '4',
+      title: 'Page 4',
+      rmBlobHash: 'h_pdf_p4_rm',
+      fileSizeBytes: 3200,
+      pdfBlobHash: 'h_pdf_blob',
+      pdfPageIndex: 3,
+    });
+    expect(sparseResolved[4].fileSizeBytes).toBe(0);
+    expect(sparseResolved[4].pdfPageIndex).toBe(4);
   });
 });
 

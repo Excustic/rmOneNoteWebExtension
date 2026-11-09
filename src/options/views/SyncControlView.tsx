@@ -16,7 +16,11 @@ import {
 import { ext } from '../../shared/browser';
 import { LegacyIcon } from '../../shared/legacyIcons';
 import type { RuntimeResponse, SyncOverviewState } from '../../shared/messaging';
-import { onSyncStorageChanged } from '../../storage/preferences';
+import {
+  DEFAULT_USER_PREFERENCES,
+  onSyncStorageChanged,
+  type UserPreferences,
+} from '../../storage/preferences';
 import {
   formatFileSize,
   formatSyncTimestamp,
@@ -538,6 +542,7 @@ export function SyncControlView({
   const [selectedPageIds, setSelectedPageIds] = useState<Set<string>>(() => new Set());
   const [showDeletedPages, setShowDeletedPages] = useState<boolean>(false);
   const [recoveringPageId, setRecoveringPageId] = useState<string | null>(null);
+  const [prefs, setPrefs] = useState<UserPreferences>(DEFAULT_USER_PREFERENCES);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -608,6 +613,7 @@ export function SyncControlView({
 
     setRoots(nextRoots);
     setSelectionMap(nextSelection);
+    setPrefs(prefs);
     setHasUnsavedChanges(false);
 
     if (!preserveExpanded) {
@@ -741,11 +747,20 @@ export function SyncControlView({
         setShowDeletedPages(false);
         const docPages = pagesByDocId.get(docNode.id) ?? [];
         const nonDeletedPages = docPages.filter((p) => p.status !== 'Deleted');
-        setSelectedPageIds(new Set(nonDeletedPages.map((p) => p.pageId)));
+        const defaultSelectedPages = nonDeletedPages.filter(
+          (p) => p.fileSizeBytes > 0 || prefs.syncUnannotatedPdfPages,
+        );
+        setSelectedPageIds(
+          new Set(
+            (defaultSelectedPages.length > 0 ? defaultSelectedPages : nonDeletedPages).map(
+              (p) => p.pageId,
+            ),
+          ),
+        );
         return docNode.id;
       });
     },
-    [pagesByDocId],
+    [pagesByDocId, prefs.syncUnannotatedPdfPages],
   );
 
   async function handleLoadFolders() {

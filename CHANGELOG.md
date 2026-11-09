@@ -35,6 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Deleted on tablet` badge marking pages removed on the tablet while preserved in OneNote.
 
 ### Fixed
+- Unannotated/blank PDF page omission in Sync Control:
+  - On reMarkable Cloud, imported PDF documents only create `.rm` stroke files and explicit `cPages.pages` entries for pages with handwritten annotations; unannotated pages have no `.rm` files and are omitted from `cPages.pages`.
+  - In `src/remarkable/treeSync.ts`, `fetchSingleDocumentBundle` previously gated `.content` retrieval on `hasRmBlobs`, causing PDFs without handwritten strokes to be skipped and indexed with 0 pages in Sync Control.
+  - Updated `fetchSingleDocumentBundle` to fetch and parse `.content` when `hasRmBlobs || hasPdfBlob` is present, retrieving the declared document `pageCount`.
+  - Implemented RFC 4122 v4 deterministic UUID generation (`deriveDeterministicPdfPageUuid`) and updated `resolveDocumentRmPages` in `metadataParser.ts` to synthesize all unclaimed PDF pages from `0` to `pageCount - 1` as `0 KB (Blank / No strokes)` with their corresponding 0-based `pdfPageIndex`.
+  - Updated `entriesToFetch` in `treeSync.ts` to re-fetch existing PDF documents missing blank pages during `Load Folders`, populating the full PDF page hierarchy into IndexedDB.
+  - Updated `SyncControlView.tsx` document inspection selection logic to prioritize non-blank pages by default (`fileSizeBytes > 0 || prefs.syncUnannotatedPdfPages`), preventing bulk pre-selection of hundreds of blank pages when inspecting large PDF books.
 - Root-level notebook grouping into OneNote container:
   - Root-level reMarkable notebooks (items not placed inside any folder) now group into a consolidated OneNote notebook (default: 'Documents' -> 'rm_Documents') where each root notebook becomes a section, rather than each root item spawning an isolated OneNote notebook.
   - Allowed leaving the root container setting blank in Settings (`targetSection: ''`) if users prefer converting root notebooks into individual OneNote notebooks (`rm_<NotebookName>`).

@@ -190,8 +190,9 @@ async function fetchSingleDocumentBundle(
     const hasRmBlobs = subEntries.some(
       (entry) => entry.id.startsWith(rmPrefix) && entry.id.endsWith('.rm'),
     );
+    const hasPdfBlob = subEntries.some((entry) => entry.id === `${documentId}.pdf`);
 
-    if (hasRmBlobs) {
+    if (hasRmBlobs || hasPdfBlob) {
       const contentTarget = `${documentId}.content`;
       const contentEntry = subEntries.find((entry) => entry.id === contentTarget);
       let rawContent: string | null = null;
@@ -400,9 +401,34 @@ async function executeCloudTreeSync(
   );
   const rootEntryIds = new Set<string>(rootEntries.map((entry) => entry.id));
 
+  const allExistingPages = await database.pages.toArray();
+  const existingPagesByDoc = new Map<string, Map<string, PageRecord>>();
+  for (const page of allExistingPages) {
+    let byPageId = existingPagesByDoc.get(page.documentId);
+    if (!byPageId) {
+      byPageId = new Map<string, PageRecord>();
+      existingPagesByDoc.set(page.documentId, byPageId);
+    }
+    byPageId.set(page.pageId, page);
+  }
+
   const entriesToFetch = rootEntries.filter((entry) => {
     const existing = existingDocMap.get(entry.id);
-    return !existing || existing.contentHash !== entry.hash;
+    if (!existing || existing.contentHash !== entry.hash) {
+      return true;
+    }
+    // Only during an explicit force-refresh (e.g. Load Folders), re-check PDF documents
+    // that may have been indexed under older versions without unannotated blank pages.
+    if (forceRefresh && existing.type === 'DocumentType' && existing.pdfBlobHash) {
+      const cachedPages = existingPagesByDoc.get(entry.id);
+      const hasAnyBlankPage =
+        cachedPages !== undefined &&
+        Array.from(cachedPages.values()).some((p) => p.fileSizeBytes === 0);
+      if (!hasAnyBlankPage) {
+        return true;
+      }
+    }
+    return false;
   });
 
   const fetchedBundles = await mapWithConcurrency(
@@ -509,21 +535,6 @@ async function executeCloudTreeSync(
     const changedActiveDocIds = finalActiveDocs
       .filter((doc) => doc.type === 'DocumentType' && fetchedMap.has(doc.documentId))
       .map((doc) => doc.documentId);
-
-    const existingPagesForChanged =
-      changedActiveDocIds.length > 0
-        ? await database.pages.where('documentId').anyOf(changedActiveDocIds).toArray()
-        : [];
-
-    const existingPagesByDoc = new Map<string, Map<string, PageRecord>>();
-    for (const page of existingPagesForChanged) {
-      let byPageId = existingPagesByDoc.get(page.documentId);
-      if (!byPageId) {
-        byPageId = new Map<string, PageRecord>();
-        existingPagesByDoc.set(page.documentId, byPageId);
-      }
-      byPageId.set(page.pageId, page);
-    }
 
     for (const docId of changedActiveDocIds) {
       const doc = finalActiveDocMap.get(docId)!;
