@@ -120,7 +120,7 @@ function hasWhitelistedAncestorFolder(
   return false;
 }
 
-function computeEffectiveWhitelistedDocIds(
+export function computeEffectiveWhitelistedDocIds(
   activeDocs: readonly DocumentRecord[],
   whitelist: SyncWhitelist,
   autoAddNewFiles: boolean,
@@ -221,6 +221,11 @@ async function fetchSingleDocumentBundle(
     }
   }
 
+  const pdfEntry =
+    meta.type === 'DocumentType'
+      ? subEntries.find((entry) => entry.id === `${documentId}.pdf`)
+      : undefined;
+
   const docRecord: DocumentRecord = {
     documentId,
     visibleName: meta.visibleName,
@@ -231,6 +236,7 @@ async function fetchSingleDocumentBundle(
     contentHash: rootEntry.hash,
     lastModified: meta.lastModifiedIso,
     oneNoteNotebookUrl: existingOneNoteUrl,
+    pdfBlobHash: pdfEntry ? pdfEntry.hash : null,
   };
 
   return { documentId, docRecord, pages };
@@ -521,6 +527,8 @@ async function executeCloudTreeSync(
         seenActivePageIds.add(resolvedPage.pageId);
         const pageVirtualPath = `${doc.virtualPath}/${resolvedPage.title}`;
         const existingPage = existingByPageId.get(resolvedPage.pageId);
+        const pdfBlobHash = resolvedPage.pdfBlobHash ?? null;
+        const pdfPageIndex = resolvedPage.pdfPageIndex ?? null;
 
         if (!existingPage) {
           pagesToPut.push({
@@ -538,6 +546,8 @@ async function executeCloudTreeSync(
             oneNotePageUrl: null,
             retryCount: 0,
             lastError: null,
+            pdfBlobHash,
+            pdfPageIndex,
           });
         } else if (existingPage.contentHash !== resolvedPage.rmBlobHash) {
           // Cross-browser ledger stubs arrive with `contentHash === ""` and `status === "Uploaded"`.
@@ -563,6 +573,8 @@ async function executeCloudTreeSync(
                 : 'Skipped',
             retryCount: isUnmodifiedLedgerStub ? existingPage.retryCount : 0,
             lastError: isUnmodifiedLedgerStub ? existingPage.lastError : null,
+            pdfBlobHash,
+            pdfPageIndex,
           });
         } else {
           let nextStatus = existingPage.status;
@@ -577,7 +589,9 @@ async function executeCloudTreeSync(
             existingPage.title !== resolvedPage.title ||
             existingPage.virtualPath !== pageVirtualPath ||
             existingPage.fileSizeBytes !== resolvedPage.fileSizeBytes ||
-            existingPage.status !== nextStatus
+            existingPage.status !== nextStatus ||
+            existingPage.pdfBlobHash !== pdfBlobHash ||
+            existingPage.pdfPageIndex !== pdfPageIndex
           ) {
             pagesToPut.push({
               ...existingPage,
@@ -586,6 +600,8 @@ async function executeCloudTreeSync(
               virtualPath: pageVirtualPath,
               fileSizeBytes: resolvedPage.fileSizeBytes,
               status: nextStatus,
+              pdfBlobHash,
+              pdfPageIndex,
             });
           }
         }

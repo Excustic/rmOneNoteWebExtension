@@ -142,7 +142,7 @@ export function PopupApp() {
       </div>
 
       <footer className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-2 text-[11px] text-slate-500">
-        <span>v0.1.0</span>
+        <span>v1.0.0</span>
         <button
           type="button"
           onClick={() => void handleOpenRoute('settings')}

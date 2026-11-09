@@ -249,6 +249,54 @@ describe('Sync15 index and metadata parsers', () => {
       },
     });
     expect(resolveDocumentRmPages(DOC_CALCULUS_ID, docEntries, allDeletedJson)).toEqual([]);
+
+    // Firmware 3.x PDF with cPages.pages[].redir mapping and an inserted blank note page (no redir)
+    const pdfWithRedirEntries = parseSync15Index(
+      [
+        '4',
+        '0:.:4:18000',
+        `h_meta:0:${DOC_CALCULUS_ID}.metadata:0:120`,
+        `h_pdf_blob:0:${DOC_CALCULUS_ID}.pdf:0:12000`,
+        `h_inserted_rm:0:${DOC_CALCULUS_ID}/${PAGE_1_ID}.rm:0:2000`,
+        `h_pdf_p2_rm:0:${DOC_CALCULUS_ID}/${PAGE_2_ID}.rm:0:3200`,
+      ].join('\n'),
+    ).entries;
+
+    const pdfWithRedirContentJson = JSON.stringify({
+      fileType: 'pdf',
+      cPages: {
+        pages: [
+          { id: 'unannotated-p1', idx: { timestamp: '1:1', value: 'aa' }, redir: { timestamp: '1:1', value: 0 } },
+          // Inserted blank note page between PDF page 1 and PDF page 2 (no redir property)
+          { id: PAGE_1_ID, idx: { timestamp: '1:2', value: 'ab' } },
+          // Annotated PDF page 2 (0-based redir.value = 1, even though it is position 3 in the notebook)
+          { id: PAGE_2_ID, idx: { timestamp: '1:3', value: 'ac' }, redir: { timestamp: '1:3', value: 1 } },
+        ],
+      },
+    });
+
+    expect(
+      resolveDocumentRmPages(DOC_CALCULUS_ID, pdfWithRedirEntries, pdfWithRedirContentJson),
+    ).toEqual([
+      {
+        pageId: PAGE_1_ID,
+        pageNumber: '2',
+        title: 'Page 2',
+        rmBlobHash: 'h_inserted_rm',
+        fileSizeBytes: 2000,
+        pdfBlobHash: 'h_pdf_blob',
+        pdfPageIndex: null,
+      },
+      {
+        pageId: PAGE_2_ID,
+        pageNumber: '3',
+        title: 'Page 3',
+        rmBlobHash: 'h_pdf_p2_rm',
+        fileSizeBytes: 3200,
+        pdfBlobHash: 'h_pdf_blob',
+        pdfPageIndex: 1,
+      },
+    ]);
   });
 });
 

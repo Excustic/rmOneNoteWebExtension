@@ -4,14 +4,13 @@ import type { SyncOverviewState } from '../../shared/messaging';
 import {
   DEFAULT_CONTAINER_WIDTH_PX,
   DEFAULT_USER_PREFERENCES,
-  getPreferences,
   MAX_CONTAINER_WIDTH_PX,
   MIN_CONTAINER_WIDTH_PX,
   onSyncStorageChanged,
   type UserPreferences,
-  updatePreferences,
 } from '../../storage/preferences';
 import { importBackupAndReconcile } from '../../storage/syncLedger';
+import { useDataSource } from '../context/DataSourceContext';
 
 interface SettingsViewProps {
   overview: SyncOverviewState;
@@ -28,6 +27,7 @@ export function SettingsView({
   onOpenSetup,
   onBackupStateChanged,
 }: SettingsViewProps) {
+  const { getPrefs, updatePrefs } = useDataSource();
   const [prefs, setPrefs] = useState<UserPreferences>(DEFAULT_USER_PREFERENCES);
   const [localWidth, setLocalWidth] = useState<number>(
     containerWidthPx ?? DEFAULT_CONTAINER_WIDTH_PX
@@ -56,7 +56,7 @@ export function SettingsView({
 
   useEffect(() => {
     let active = true;
-    void getPreferences().then((loaded) => {
+    void getPrefs().then((loaded) => {
       if (active) {
         setPrefs(loaded);
         setLocalWidth(loaded.containerWidthPx);
@@ -64,7 +64,7 @@ export function SettingsView({
     });
 
     const unsubscribe = onSyncStorageChanged(() => {
-      void getPreferences().then((loaded) => {
+      void getPrefs().then((loaded) => {
         if (active) {
           setPrefs(loaded);
           setLocalWidth(loaded.containerWidthPx);
@@ -76,14 +76,14 @@ export function SettingsView({
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [getPrefs]);
 
   async function handleSavePreferences(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setIsSaving(true);
     setSaveMessage(null);
     try {
-      const saved = await updatePreferences({
+      const saved = await updatePrefs({
         ...prefs,
         containerWidthPx: localWidth,
       });
@@ -164,7 +164,7 @@ export function SettingsView({
   }
 
   return (
-    <div className="space-y-6">
+    <div data-tour="settings-container" className="space-y-6">
       <header>
         <h1 id="main-heading" tabIndex={-1} className="text-2xl font-semibold text-slate-900">
           Settings
@@ -236,7 +236,7 @@ export function SettingsView({
             />
           </div>
 
-          <div>
+          <div data-tour="settings-width-control">
             <label
               htmlFor="container-width-range"
               className="block text-sm font-medium text-slate-700"

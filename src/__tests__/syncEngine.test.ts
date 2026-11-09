@@ -1,6 +1,7 @@
+import { PDFDocument } from 'pdf-lib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { saveMicrosoftAuth, saveRemarkableAuth } from '../auth/authStore';
-import { RM_HEADER_V3 } from '../converter';
+import { extractSinglePdfPage, RM_HEADER_V3 } from '../converter';
 import { RmOneNoteDatabase } from '../db/db';
 import { getDocument, getPage } from '../db/repository';
 import { REMARKABLE_SYNC_FILES_URL, REMARKABLE_SYNC_ROOT_URL } from '../remarkable';
@@ -130,7 +131,7 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
     await testDb.delete();
   });
 
-  it('runs Sync15 tree -> .rm conversion -> OneNote upload -> verification -> ledger, then updates edited pages in place', async () => {
+  it('runs Sync15 tree -> .rm conversion -> OneNote upload -> verification -> ledger, then updates edited pages by replacing them', async () => {
     await setWhitelist({ syncFiles: [], syncFolders: [FOLDER_ID] });
 
     const rmBytes = buildMinimalRmV3Bytes();
@@ -159,6 +160,7 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
     const createdSections: string[] = [];
     const uploadBodies: string[] = [];
     const patchedPageIds: string[] = [];
+    const deletedPageIds: string[] = [];
     const sectionPages: Array<{ id: string; title: string }> = [];
     let uploadCounter = 0;
 
@@ -231,6 +233,15 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
         return new Response(null, { status: 204 });
       }
       const pageMatch = path.match(/^\/pages\/([^/]+)$/);
+      if (pageMatch && method === 'DELETE') {
+        const id = decodeURIComponent(pageMatch[1]);
+        deletedPageIds.push(id);
+        const index = sectionPages.findIndex((candidate) => candidate.id === id);
+        if (index >= 0) {
+          sectionPages.splice(index, 1);
+        }
+        return new Response(null, { status: 204 });
+      }
       if (pageMatch && method === 'GET') {
         const id = decodeURIComponent(pageMatch[1]);
         return new Response(
@@ -274,7 +285,8 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
     const ledgerMeta = getRawSyncStoreSnapshot().get('sl_meta') as { totalSeq: number };
     expect(ledgerMeta.totalSeq).toBe(2);
 
-    // Edit page 1 on the tablet: new blob hash -> page is re-queued and PATCHed in place.
+    // Edit page 1 on the tablet: new blob hash -> page is re-queued, re-created
+    // (Graph ignores InkML on PATCH) and the superseded page is deleted.
     setCloudVersion('root_v2', 'rm_page1_v2', 'sub_doc_v2');
     const secondRun = await runSyncCycle({
       database: testDb,
@@ -284,9 +296,11 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
 
     expect(secondRun.processedCount).toBe(1);
     expect(secondRun.uploadedCount).toBe(1);
-    expect(patchedPageIds).toEqual(['onenote-page-1']);
-    expect(uploadBodies).toHaveLength(2);
-    expect((await getPage(DOC_ID, PAGE_1_ID, testDb))?.oneNotePageId).toBe('onenote-page-1');
+    expect(patchedPageIds).toEqual([]);
+    expect(uploadBodies).toHaveLength(3);
+    expect(uploadBodies[2]).toContain('<inkml:trace');
+    expect(deletedPageIds).toEqual(['onenote-page-1']);
+    expect((await getPage(DOC_ID, PAGE_1_ID, testDb))?.oneNotePageId).toBe('onenote-page-3');
   });
 
   it('supports per-item cancellation, failed page retry reset, and alarm scheduling from preferences', async () => {
@@ -399,5 +413,166 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
     expect(queuedDoc).toBe(2);
     expect((await getPage(DOC_ID, PAGE_1_ID, testDb))?.status).toBe('Pending');
     expect((await getPage(DOC_ID, PAGE_2_ID, testDb))?.status).toBe('Pending');
+  });
+
+  it('slices the target single page from a multi-page PDF via pdf-lib and attaches it as application/pdf background', async () => {
+    // Build a 3-page PDF with distinct page dimensions so we can verify exact page slicing
+    const sourcePdf = await PDFDocument.create();
+    sourcePdf.addPage([400, 500]); // Page index 0
+    sourcePdf.addPage([612, 792]); // Page index 1 (target annotated page)
+    sourcePdf.addPage([800, 1000]); // Page index 2
+    const fullPdfBytes = await sourcePdf.save();
+
+    // Direct unit check on extractSinglePdfPage
+    const slicedPage1 = await extractSinglePdfPage(fullPdfBytes, 1);
+    expect(slicedPage1).not.toBeNull();
+    const parsedSlice = await PDFDocument.load(slicedPage1!);
+    expect(parsedSlice.getPageCount()).toBe(1);
+    expect(parsedSlice.getPage(0).getSize()).toEqual({ width: 612, height: 792 });
+    expect(await extractSinglePdfPage(fullPdfBytes, 99)).toBeNull();
+
+    // End-to-end sync cycle with an annotated PDF document
+    await setWhitelist({ syncFiles: [DOC_ID], syncFolders: [] });
+    const rmBytes = buildMinimalRmV3Bytes();
+    const blobs: Record<string, string | Uint8Array> = {
+      root_pdf: `4\n0:.:1:20000\nsub_pdf_doc:80000000:${DOC_ID}:5:20000`,
+      sub_pdf_doc: [
+        '4',
+        '0:.:5:20000',
+        `meta_pdf:0:${DOC_ID}.metadata:0:150`,
+        `content_pdf:0:${DOC_ID}.content:0:300`,
+        `blob_pdf:0:${DOC_ID}.pdf:0:${fullPdfBytes.byteLength}`,
+        `rm_inserted:0:${DOC_ID}/${PAGE_1_ID}.rm:0:${rmBytes.byteLength}`,
+        `rm_annotated_p2:0:${DOC_ID}/${PAGE_2_ID}.rm:0:${rmBytes.byteLength}`,
+      ].join('\n'),
+      meta_pdf: JSON.stringify({
+        visibleName: 'Annotated Paper',
+        type: 'DocumentType',
+        parent: '',
+        lastModified: String(Date.now() - 30_000),
+        version: 1,
+      }),
+      content_pdf: JSON.stringify({
+        fileType: 'pdf',
+        cPages: {
+          pages: [
+            // Inserted blank note page (no redir -> pdfPageIndex: null)
+            { id: PAGE_1_ID, idx: { timestamp: '1:1', value: 'aa' } },
+            // Annotated PDF Page 2 (0-based redir.value = 1)
+            { id: PAGE_2_ID, idx: { timestamp: '1:2', value: 'ab' }, redir: { timestamp: '1:2', value: 1 } },
+          ],
+        },
+      }),
+      blob_pdf: fullPdfBytes,
+      rm_inserted: rmBytes,
+      rm_annotated_p2: rmBytes,
+    };
+
+    let pdfDownloadCount = 0;
+    const uploadedMultipartPayloads: string[] = [];
+
+    const mockFetch: typeof fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const method = (init?.method ?? 'GET').toUpperCase();
+
+      if (url === REMARKABLE_SYNC_ROOT_URL) {
+        return new Response(
+          JSON.stringify({ hash: 'root_pdf', generation: 1, schemaVersion: 4 }),
+          { status: 200 },
+        );
+      }
+      if (url.startsWith(`${REMARKABLE_SYNC_FILES_URL}/`)) {
+        const hash = decodeURIComponent(url.slice(`${REMARKABLE_SYNC_FILES_URL}/`.length));
+        if (hash === 'blob_pdf') {
+          pdfDownloadCount += 1;
+        }
+        const blob = blobs[hash];
+        if (!blob) {
+          return new Response(`Missing ${hash}`, { status: 404 });
+        }
+        if (blob instanceof Uint8Array) {
+          const copy = new Uint8Array(blob.byteLength);
+          copy.set(blob);
+          return new Response(copy.buffer, { status: 200 });
+        }
+        return new Response(blob, { status: 200 });
+      }
+
+      const path = url.replace('https://graph.microsoft.com/v1.0/me/onenote', '').split('?')[0];
+      if (path === '/notebooks' && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            value: [
+              {
+                id: 'nb-root',
+                displayName: 'rm_Annotated Paper',
+                links: { oneNoteWebUrl: { href: 'https://onenote.example/nb-root' } },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (path === '/notebooks/nb-root/sections' && method === 'GET') {
+        return new Response(
+          JSON.stringify({ value: [{ id: 'sec-pdf', displayName: 'Annotated Paper' }] }),
+          { status: 200 },
+        );
+      }
+      if (path === '/sections/sec-pdf/pages' && method === 'GET') {
+        return new Response(JSON.stringify({ value: [] }), { status: 200 });
+      }
+      if (path === '/sections/sec-pdf/pages' && method === 'POST') {
+        const rawText = new TextDecoder('latin1').decode(init?.body as ArrayBuffer);
+        uploadedMultipartPayloads.push(rawText);
+        const pageId = `on-pdf-${uploadedMultipartPayloads.length}`;
+        return new Response(JSON.stringify({ id: pageId, title: 'Page' }), { status: 201 });
+      }
+      const pageMatch = path.match(/^\/pages\/([^/]+)$/);
+      if (pageMatch && method === 'GET') {
+        const id = decodeURIComponent(pageMatch[1]);
+        return new Response(
+          JSON.stringify({
+            id,
+            title: 'Page',
+            links: { oneNoteWebUrl: { href: `https://onenote.example/${id}` } },
+          }),
+          { status: 200 },
+        );
+      }
+
+      return new Response(`Unhandled ${method} ${url}`, { status: 500 });
+    };
+
+    const summary = await runSyncCycle({
+      database: testDb,
+      fetchImpl: mockFetch,
+      phantomLinkPollDelaysMs: [1, 1],
+    });
+
+    expect(summary.failedCount).toBe(0);
+    expect(summary.uploadedCount).toBe(2);
+    expect(pdfDownloadCount).toBe(1);
+    expect(uploadedMultipartPayloads).toHaveLength(2);
+
+    const insertedPagePayload = uploadedMultipartPayloads.find((p) =>
+      p.includes('<title>Page 1</title>'),
+    )!;
+    const annotatedPdfPagePayload = uploadedMultipartPayloads.find((p) =>
+      p.includes('<title>Page 2</title>'),
+    )!;
+
+    // Inserted blank note page has no PDF background part
+    expect(insertedPagePayload).not.toContain('filename="background.pdf"');
+    expect(insertedPagePayload).not.toContain('data-render-src="name:background"');
+
+    // Annotated PDF page includes single-page application/pdf background part + data-render-src
+    expect(annotatedPdfPagePayload).toContain(
+      'Content-Disposition: form-data; name="background"; filename="background.pdf"\r\nContent-Type: application/pdf',
+    );
+    expect(annotatedPdfPagePayload).toContain(
+      '<img data-render-src="name:background" style="position:absolute;top:0;left:0;z-index:-1" />',
+    );
+    expect(annotatedPdfPagePayload).toContain('%PDF-');
   });
 });

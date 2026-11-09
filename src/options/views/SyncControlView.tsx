@@ -1,8 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { db } from '../../db/db';
 import type { DocumentRecord, PageRecord } from '../../db/models';
-import { getAllDocuments } from '../../db/repository';
 import {
   buildFileTreeHierarchy,
   deriveInitialSelectionMap,
@@ -13,17 +11,12 @@ import {
   getFolderSubtreeCounts,
   getNodeSelectionState,
   type SelectionMap,
-  saveWhitelistAndReconcilePages,
   toggleNodeSelection,
 } from '../../remarkable';
 import { ext } from '../../shared/browser';
 import { LegacyIcon } from '../../shared/legacyIcons';
 import type { RuntimeResponse, SyncOverviewState } from '../../shared/messaging';
-import {
-  getPreferences,
-  getWhitelist,
-  onSyncStorageChanged,
-} from '../../storage/preferences';
+import { onSyncStorageChanged } from '../../storage/preferences';
 import {
   formatFileSize,
   formatSyncTimestamp,
@@ -33,9 +26,11 @@ import {
   SyncStatusIcon,
   type VisualSyncState,
 } from '../components/SyncStatusIcon';
+import { useDataSource } from '../context/DataSourceContext';
 
 interface SyncControlViewProps {
   overview: SyncOverviewState;
+  currentTourStepId?: string;
   onOpenSetup: () => void;
   onSyncStateChanged: (nextOverview?: SyncOverviewState) => void;
 }
@@ -330,6 +325,7 @@ function TreeNodeRow({
           {hasChildren ? (
             <button
               type="button"
+              data-tour={isFolder && depth === 0 ? 'sync-control-folder-expand' : undefined}
               aria-expanded={isExpanded}
               aria-controls={groupId}
               aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${node.visibleName}`}
@@ -354,6 +350,7 @@ function TreeNodeRow({
               }
             }}
             id={checkboxId}
+            data-tour={isFolder && depth === 0 ? 'sync-control-folder-checkbox' : undefined}
             type="checkbox"
             checked={state === true}
             disabled={disabled}
@@ -364,6 +361,7 @@ function TreeNodeRow({
 
           <button
             type="button"
+            data-tour={!isFolder && node.visibleName === 'Calculus 1' ? 'sync-control-doc-row' : undefined}
             onClick={() => {
               if (isFolder) {
                 if (hasChildren) {
@@ -494,6 +492,7 @@ function TreeNodeRow({
 
 export function SyncControlView({
   overview,
+  currentTourStepId,
   onOpenSetup,
   onSyncStateChanged,
 }: SyncControlViewProps) {
@@ -517,8 +516,18 @@ export function SyncControlView({
   hasUnsavedRef.current = hasUnsavedChanges;
   const flashTimerRef = useRef<number | null>(null);
 
-  const livePages = useLiveQuery(async () => db.pages.toArray(), [], [] as PageRecord[]);
-  const liveDocs = useLiveQuery(async () => db.documents.toArray(), [], [] as DocumentRecord[]);
+  const {
+    db,
+    sendMessage,
+    getAllDocs,
+    getPrefs,
+    getWl,
+    saveWhitelist,
+    isDemo,
+  } = useDataSource();
+
+  const livePages = useLiveQuery(async () => db.pages.toArray(), [db], [] as PageRecord[]);
+  const liveDocs = useLiveQuery(async () => db.documents.toArray(), [db], [] as DocumentRecord[]);
 
   const pagesByDocId = useMemo(() => {
     const map = new Map<string, PageRecord[]>();
@@ -549,9 +558,9 @@ export function SyncControlView({
 
   const hydrateFromLocalCache = useCallback(async (preserveExpanded = false) => {
     const [docs, whitelist, prefs] = await Promise.all([
-      getAllDocuments(),
-      getWhitelist(),
-      getPreferences(),
+      getAllDocs(),
+      getWl(),
+      getPrefs(),
     ]);
 
     const nextRoots = buildFileTreeHierarchy(docs);
@@ -566,12 +575,22 @@ export function SyncControlView({
     setHasUnsavedChanges(false);
 
     if (!preserveExpanded) {
-      const topFolderIds = nextRoots
-        .filter((node) => node.type === 'CollectionType' && node.children.length > 0)
-        .map((node) => node.id);
-      setExpandedIds(new Set(topFolderIds));
+      if (isDemo) {
+        setExpandedIds(new Set(collectAllFolderIds(nextRoots)));
+      } else {
+        const topFolderIds = nextRoots
+          .filter((node) => node.type === 'CollectionType' && node.children.length > 0)
+          .map((node) => node.id);
+        setExpandedIds(new Set(topFolderIds));
+      }
     }
-  }, []);
+  }, [getAllDocs, getPrefs, getWl, isDemo]);
+
+  useEffect(() => {
+    if (isDemo && currentTourStepId === 'sync-control-pages-panel' && !inspectedDocId) {
+      setInspectedDocId('demo-doc-calc');
+    }
+  }, [isDemo, currentTourStepId, inspectedDocId]);
 
   useEffect(() => {
     void hydrateFromLocalCache(false);
@@ -636,7 +655,7 @@ export function SyncControlView({
   );
 
   async function handleLoadFolders() {
-    const permissionPromise = requestHostOriginsFromGesture(REMARKABLE_HOST_ORIGINS);
+    const permissionPromise = isDemo ? Promise.resolve(true) : requestHostOriginsFromGesture(REMARKABLE_HOST_ORIGINS);
     setIsLoading(true);
     setFeedback(null);
 
@@ -648,7 +667,7 @@ export function SyncControlView({
         );
       }
 
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'SYNC_REMARKABLE_TREE',
         forceRefresh: true,
       })) as RuntimeResponse | undefined;
@@ -679,7 +698,7 @@ export function SyncControlView({
 
     try {
       const nextWhitelist = extractWhitelistFromSelection(roots, selectionMap);
-      const result = await saveWhitelistAndReconcilePages(nextWhitelist);
+      const result = await saveWhitelist(nextWhitelist);
       setHasUnsavedChanges(false);
       onSyncStateChanged();
 
@@ -711,16 +730,18 @@ export function SyncControlView({
   }
 
   async function handleTriggerGlobalSync() {
-    const permissionPromise = requestHostOriginsFromGesture([
-      ...REMARKABLE_HOST_ORIGINS,
-      ...MICROSOFT_GRAPH_ORIGINS,
-    ]);
+    const permissionPromise = isDemo
+      ? Promise.resolve(true)
+      : requestHostOriginsFromGesture([
+          ...REMARKABLE_HOST_ORIGINS,
+          ...MICROSOFT_GRAPH_ORIGINS,
+        ]);
     setIsSyncingNow(true);
     setFeedback(null);
 
     try {
       await permissionPromise;
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'TRIGGER_MANUAL_SYNC',
       })) as RuntimeResponse | undefined;
 
@@ -744,16 +765,18 @@ export function SyncControlView({
   }
 
   async function handleRetryAllFailed() {
-    const permissionPromise = requestHostOriginsFromGesture([
-      ...REMARKABLE_HOST_ORIGINS,
-      ...MICROSOFT_GRAPH_ORIGINS,
-    ]);
+    const permissionPromise = isDemo
+      ? Promise.resolve(true)
+      : requestHostOriginsFromGesture([
+          ...REMARKABLE_HOST_ORIGINS,
+          ...MICROSOFT_GRAPH_ORIGINS,
+        ]);
     setIsSyncingNow(true);
     setFeedback(null);
 
     try {
       await permissionPromise;
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'RETRY_FAILED_PAGES',
         runNow: true,
       })) as RuntimeResponse | undefined;
@@ -778,10 +801,12 @@ export function SyncControlView({
   }
 
   async function handleManualSyncNode(node: FileTreeNode) {
-    const permissionPromise = requestHostOriginsFromGesture([
-      ...REMARKABLE_HOST_ORIGINS,
-      ...MICROSOFT_GRAPH_ORIGINS,
-    ]);
+    const permissionPromise = isDemo
+      ? Promise.resolve(true)
+      : requestHostOriginsFromGesture([
+          ...REMARKABLE_HOST_ORIGINS,
+          ...MICROSOFT_GRAPH_ORIGINS,
+        ]);
     const documentIds =
       node.type === 'CollectionType'
         ? collectSubtreeDocumentIds(node, selectionMap)
@@ -800,7 +825,7 @@ export function SyncControlView({
 
     try {
       await permissionPromise;
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'MANUAL_SYNC_ITEMS',
         documentIds,
         runNow: true,
@@ -831,16 +856,18 @@ export function SyncControlView({
     if (pages.length === 0) {
       return;
     }
-    const permissionPromise = requestHostOriginsFromGesture([
-      ...REMARKABLE_HOST_ORIGINS,
-      ...MICROSOFT_GRAPH_ORIGINS,
-    ]);
+    const permissionPromise = isDemo
+      ? Promise.resolve(true)
+      : requestHostOriginsFromGesture([
+          ...REMARKABLE_HOST_ORIGINS,
+          ...MICROSOFT_GRAPH_ORIGINS,
+        ]);
     setIsSyncingNow(true);
     setFeedback(null);
 
     try {
       await permissionPromise;
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'MANUAL_SYNC_ITEMS',
         pages,
         runNow: true,
@@ -867,7 +894,7 @@ export function SyncControlView({
 
   async function handleCancelPageSync(documentId: string, pageId: string) {
     try {
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'CANCEL_SYNC_ITEM',
         documentId,
         pageId,
@@ -1067,6 +1094,7 @@ export function SyncControlView({
 
             <button
               type="button"
+              data-tour="sync-control-load-btn"
               disabled={!overview.remarkablePaired || isLoading}
               onClick={() => void handleLoadFolders()}
               className="min-h-8 rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-800 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-55"
@@ -1076,6 +1104,7 @@ export function SyncControlView({
 
             <button
               type="button"
+              data-tour="sync-control-save-btn"
               disabled={!hasLoadedItems || isSaving || !overview.remarkablePaired}
               onClick={() => void handleSaveSelection()}
               className={`min-h-8 rounded-md px-3.5 py-1 text-xs font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-55 ${
@@ -1097,7 +1126,10 @@ export function SyncControlView({
 
         {/* Split Layout: Main File Tree + Smooth Slide-In Pages Side Panel */}
         <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start">
-          <div className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white">
+          <div
+            data-tour="sync-control-tree"
+            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white"
+          >
             {isLoading ? (
               <progress
                 aria-label="Loading cloud folder structure"
@@ -1146,6 +1178,7 @@ export function SyncControlView({
 
           {/* Pages Side Panel (Smooth Slide-In) */}
           <aside
+            data-tour="sync-control-pages-panel"
             aria-label={
               inspectedDocNode
                 ? `Pages in ${inspectedDocNode.visibleName}`

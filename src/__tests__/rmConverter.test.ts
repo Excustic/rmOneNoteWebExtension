@@ -551,6 +551,18 @@ describe('Phase 5: Native TypeScript .rm to InkML + HTML Converter', () => {
       '<inkml:trace xml:id="1" contextRef="#ctxCoordinatesWithPressure" brushRef="#name_Fineliner_cap_round_op_1_w_3.6_clr_6">7520 2600 12800,8519 3600 25600</inkml:trace>'
     );
 
+    // Verify horizontal (landscape) PDF coordinate origin and 226-DPI himetric alignment (e.g. 1191 x 842 pt)
+    const landscapePdfResult = convertRmPage(rmBytes, {
+      pageTitle: 'Daily Crossword - Advanced',
+      includeBackgroundImageRef: true,
+      pdfPageSizePt: { widthPt: 1191, heightPt: 842 },
+    });
+    // xochitl maps 1 PDF pt to 226/72 .rm units, centered on x = 0:
+    // landscapeHalfWidth = round((1191 / 2) * (226 / 72)) = 1869 -> minX = -1869, yPad = 0
+    // First point of Stroke 1 has x = 0 + 50 (anchorOriginX) = 50 -> (50 + 1869) * (2540/226) = 21567.5 -> 21567
+    // y = 100 + 100 (anchorY) = 200 -> 200 * (2540/226) = 2247.8 -> 2247
+    expect(landscapePdfResult.inkmlXml).toContain('21567 2247 12800');
+
     // Verify Presentation HTML escaping, title, line breaks, and bold formatting
     expect(result.presentationHtml).toContain('<title>Calculus 1 - Lecture &lt;1&gt;</title>');
     expect(result.presentationHtml).toContain('data-absolute-enabled="true"');

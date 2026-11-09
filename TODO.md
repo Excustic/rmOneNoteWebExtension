@@ -10,7 +10,7 @@ Items recorded during active development phases.
 
 ## PDF Background Rendering (`src/converter/` & `src/onenote/`)
 
-- [ ] **Annotated PDF Page Rasterization (`Option A`):** When syncing a reMarkable document backed by an underlying `<documentId>.pdf`, download the PDF binary, rasterize page `pageNumber - 1` to JPEG (`Quality = 85`) via `pdfjs-dist` + `OffscreenCanvas`, and attach it as the `"background"` multipart part (`<img data-render-src="name:background" ... />`) behind the InkML strokes in OneNote, matching legacy `PdfConverterService.cs`.
+- [x] **Annotated PDF Page Background Sync (`Option 1 - pdf-lib`):** When syncing a reMarkable document backed by an underlying `<documentId>.pdf`, download the PDF binary, slice the target 0-based `pdfPageIndex` (resolved from `cPages.pages[].redir.value` or page order) into a standalone 1-page PDF using `pdf-lib`, and attach it as the `"background"` multipart part (`Content-Type: application/pdf`, `<img data-render-src="name:background" ... />`) behind the InkML strokes in OneNote.
 
 ## Unified Sync Control & Queue Redesign (`src/options/views/`)
 
@@ -21,5 +21,14 @@ Items recorded during active development phases.
 ## Layout & Container Sizing (`src/options/`)
 
 - [x] **Resizable Main Container Divider & Width Setting:** Implement a hold-and-drag divider (matching the `Noodle` project pattern) that dynamically resizes the main container width, alongside a persisted container width option in `SettingsView.tsx`.
+
+## Onboarding & Interactive Tour (`src/options/tour/` & `src/options/demo/`)
+
+- [x] **Interactive Onboarding Tour & Demo Mode:** Guided walkthrough explaining account setup, dashboard metrics, sync control features (folder tree navigation, slide-in pages panel, manual syncing), emphasizing automatic future syncs for selected folders. Includes dedicated mock database and simulated messaging so users can interact with live-feeling UI controls safely, auto-prompting on initial launch and replayable from the sidebar.
+
+## DevOps & CI/CD Pipeline (`.github/workflows/` & `scripts/`)
+
+- [x] **Continuous Integration & Extension Packaging Pipeline:** GitHub Actions workflow (`ci.yml`) triggering on pushes and pull requests to run TypeScript typechecking (`pnpm run typecheck`), Vitest unit tests (`pnpm test`), dual-target compilation (`pnpm run build`), and packaging (`pnpm run package`). Generates separate distribution archives for Chrome, Firefox (`.zip` and `.xpi`), Edge, and Opera with SHA-256 checksums, uploaded as workflow artifacts and published to GitHub Releases on version tags.
+
 
 

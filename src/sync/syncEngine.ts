@@ -1,5 +1,11 @@
+import type { PDFDocument } from 'pdf-lib';
 import { getAuthStatusSummary } from '../auth';
-import { convertRmPage } from '../converter';
+import {
+  convertRmPage,
+  type ExtractedPdfPageResult,
+  extractSinglePdfPageWithMetricsFromDocument,
+  loadSourcePdfDocument,
+} from '../converter';
 import { db, type RmOneNoteDatabase } from '../db/db';
 import type { DocumentRecord, PageRecord } from '../db/models';
 import {
@@ -16,7 +22,14 @@ import {
   parseVirtualPathToOneNoteTarget,
   type OneNotePage,
 } from '../onenote';
-import { downloadPageRmBytes, syncRemarkableCloudTree } from '../remarkable';
+import {
+  downloadDocumentBlobBytes,
+  downloadPageRmBytes,
+  fetchDocumentIndexEntries,
+  fetchSync15BlobText,
+  resolveDocumentRmPages,
+  syncRemarkableCloudTree,
+} from '../remarkable';
 import { getPreferences, getWhitelist, type SyncWhitelist } from '../storage/preferences';
 import {
   reconcileSyncLedgerToDexie,
@@ -334,6 +347,139 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
   });
 
   const whitelistedDocsLower = computeWhitelistedDocumentSet(allDocs, whitelist);
+  const docMap = new Map<string, DocumentRecord>(
+    allDocs.map((doc) => [doc.documentId, doc]),
+  );
+
+  // Per-cycle caches for annotated PDF documents so `<documentId>.pdf` is downloaded
+  // and parsed at most once per document across all concurrent page workers.
+  const pdfIndexCache = new Map<
+    string,
+    { pdfBlobHash: string | null; pageIndexByPageId: Map<string, number | null> }
+  >();
+  const pdfSourceDocCache = new Map<string, PDFDocument | null>();
+  const pdfMutex = new KeyedMutex();
+
+  const resolvePageBackgroundPdf = async (
+    page: PageRecord,
+  ): Promise<ExtractedPdfPageResult | null> => {
+    try {
+      let pdfBlobHash: string | null | undefined = page.pdfBlobHash;
+      let pdfPageIndex: number | null | undefined = page.pdfPageIndex;
+
+      if (pdfBlobHash === undefined) {
+        const docMeta = docMap.get(page.documentId);
+        if (docMeta?.pdfBlobHash === null) {
+          pdfBlobHash = null;
+          pdfPageIndex = null;
+        } else if (docMeta?.contentHash) {
+          const resolved = await pdfMutex.runExclusive(
+            `idx:${page.documentId}`,
+            async () => {
+              const cached = pdfIndexCache.get(page.documentId);
+              if (cached) {
+                return cached;
+              }
+              const subEntries = await fetchDocumentIndexEntries(
+                page.documentId,
+                docMeta.contentHash,
+                fetchImpl,
+              );
+              const pdfEntry = subEntries.find(
+                (entry) => entry.id === `${page.documentId}.pdf`,
+              );
+              const pageIndexByPageId = new Map<string, number | null>();
+              if (pdfEntry) {
+                const contentEntry = subEntries.find(
+                  (entry) => entry.id === `${page.documentId}.content`,
+                );
+                let rawContent: string | null = null;
+                if (contentEntry) {
+                  try {
+                    rawContent = await fetchSync15BlobText(
+                      contentEntry.hash,
+                      contentEntry.id,
+                      fetchImpl,
+                    );
+                  } catch {
+                    rawContent = null;
+                  }
+                }
+                const rmPages = resolveDocumentRmPages(
+                  page.documentId,
+                  subEntries,
+                  rawContent,
+                );
+                for (const rmPage of rmPages) {
+                  pageIndexByPageId.set(rmPage.pageId, rmPage.pdfPageIndex ?? null);
+                }
+              }
+              const result = {
+                pdfBlobHash: pdfEntry ? pdfEntry.hash : null,
+                pageIndexByPageId,
+              };
+              pdfIndexCache.set(page.documentId, result);
+              return result;
+            },
+          );
+          pdfBlobHash = resolved.pdfBlobHash;
+          pdfPageIndex = resolved.pageIndexByPageId.has(page.pageId)
+            ? (resolved.pageIndexByPageId.get(page.pageId) ?? null)
+            : Number.parseInt(page.pageNumber, 10) - 1;
+        }
+      }
+
+      if (!pdfBlobHash) {
+        return null;
+      }
+
+      const resolvedPageIndex =
+        pdfPageIndex !== undefined
+          ? pdfPageIndex
+          : Number.parseInt(page.pageNumber, 10) - 1;
+
+      if (
+        resolvedPageIndex === null ||
+        !Number.isInteger(resolvedPageIndex) ||
+        resolvedPageIndex < 0
+      ) {
+        return null;
+      }
+
+      const cacheKey = `${page.documentId}:${pdfBlobHash}`;
+      const srcPdfDoc = await pdfMutex.runExclusive(
+        `pdf:${cacheKey}`,
+        async () => {
+          if (pdfSourceDocCache.has(cacheKey)) {
+            return pdfSourceDocCache.get(cacheKey) ?? null;
+          }
+          const pdfBytes = await downloadDocumentBlobBytes(
+            page.documentId,
+            `${page.documentId}.pdf`,
+            {
+              knownBlobHash: pdfBlobHash,
+              fetchImpl,
+            },
+          );
+          const loaded = await loadSourcePdfDocument(pdfBytes);
+          pdfSourceDocCache.set(cacheKey, loaded);
+          return loaded;
+        },
+      );
+
+      if (!srcPdfDoc) {
+        return null;
+      }
+
+      return await extractSinglePdfPageWithMetricsFromDocument(srcPdfDoc, resolvedPageIndex);
+    } catch (err) {
+      console.warn(
+        `[rmOneNote] Failed to extract PDF background for ${page.virtualPath}; uploading strokes without PDF background:`,
+        err,
+      );
+      return null;
+    }
+  };
 
   const oneNoteClient =
     options.oneNoteClient ??
@@ -454,17 +600,25 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
         prefs.targetSection,
       );
 
-      const rmBytes = await downloadPageRmBytes(page.documentId, page.pageId, {
-        knownBlobHash: page.contentHash || undefined,
-        fetchImpl,
-      });
+      const [rmBytes, backgroundPdf] = await Promise.all([
+        downloadPageRmBytes(page.documentId, page.pageId, {
+          knownBlobHash: page.contentHash || undefined,
+          fetchImpl,
+        }),
+        resolvePageBackgroundPdf(page),
+      ]);
 
       if (cancelledPageKeys.has(pageKey)) {
         throw new Error('Cancelled by user');
       }
 
+      const backgroundPdfBytes = backgroundPdf ? backgroundPdf.pdfBytes : null;
       const converted = convertRmPage(rmBytes, {
         pageTitle: targetPath.pageTitle,
+        includeBackgroundImageRef: backgroundPdfBytes !== null,
+        pdfPageSizePt: backgroundPdf
+          ? { widthPt: backgroundPdf.widthPt, heightPt: backgroundPdf.heightPt }
+          : null,
       });
 
       // Phase B: Resolve OneNote Notebook & Section (creating if missing, deduplicated via KeyedMutex)
@@ -496,19 +650,28 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
           candidate.title === targetPath.pageTitle,
       );
 
-      const uploadedPageId = matchingExisting
-        ? await oneNoteClient.updateInkMlPage({
-            pageId: matchingExisting.id,
-            title: targetPath.pageTitle,
-            presentationHtml: converted.presentationHtml,
-            inkmlXml: converted.inkmlXml,
-          })
-        : await oneNoteClient.uploadInkMlPage({
-            sectionId: resolvedTarget.sectionId,
-            title: targetPath.pageTitle,
-            presentationHtml: converted.presentationHtml,
-            inkmlXml: converted.inkmlXml,
-          });
+      // Graph only ingests `presentation-onenote-inkml` on page creation.
+      // `PATCH /pages/{id}/content` silently drops the InkML part and appends
+      // another PDF printout on every call, so an edited page is replaced by
+      // creating a fresh page first and deleting the stale one afterwards.
+      // Deleting last means a failed upload never loses the existing page.
+      const uploadedPageId = await oneNoteClient.uploadInkMlPage({
+        sectionId: resolvedTarget.sectionId,
+        title: targetPath.pageTitle,
+        presentationHtml: converted.presentationHtml,
+        inkmlXml: converted.inkmlXml,
+        backgroundPdfBytes,
+      });
+
+      if (matchingExisting && matchingExisting.id !== uploadedPageId) {
+        const deleted = await oneNoteClient.deletePage(matchingExisting.id);
+        if (!deleted) {
+          // TODO: Surface orphaned pages in Sync Control so users can clean them up.
+          console.warn(
+            `[SyncEngine] Replaced OneNote page ${matchingExisting.id} but could not delete it.`,
+          );
+        }
+      }
 
       await upsertSectionPageInMemory(
         resolvedTarget.sectionId,

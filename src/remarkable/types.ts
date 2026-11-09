@@ -69,6 +69,7 @@ export interface RawCrdtPageEntry {
   idx?: CrdtTimestampedValue<string>;
   deleted?: CrdtTimestampedValue<number> | boolean | null;
   template?: CrdtTimestampedValue<string>;
+  redir?: CrdtTimestampedValue<number>;
 }
 
 /**
@@ -97,6 +98,10 @@ export interface ResolvedRemarkablePage {
   /** Sync15 SHA-256 blob hash of `<docId>/<pageId>.rm`. */
   rmBlobHash: string;
   fileSizeBytes: number;
+  /** Optional Sync15 SHA-256 blob hash of `<docId>.pdf` if backed by a PDF. */
+  pdfBlobHash?: string | null;
+  /** 0-based page index inside `<docId>.pdf`, or `null` for non-PDF / inserted blank pages. */
+  pdfPageIndex?: number | null;
 }
 
 /**
@@ -126,4 +131,6 @@ export interface CloudTreeSyncResult {
   indexedPagesCount: number;
   pendingPagesCount: number;
 }
+
+export type { SaveWhitelistSelectionResult } from './treeSync';
 

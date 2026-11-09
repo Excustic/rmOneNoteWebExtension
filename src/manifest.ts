@@ -12,7 +12,7 @@ export function buildManifest(targetBrowser: 'chrome' | 'firefox'): Record<strin
     manifest_version: 3,
     name: 'reMarkable to OneNote Sync',
     short_name: 'rmOneNote',
-    version: '0.1.0',
+    version: '1.0.0',
     description:
       'Autonomous serverless sync between reMarkable Cloud notebooks and Microsoft OneNote.',
     icons: {

@@ -57,6 +57,7 @@ export interface UploadInkMlPageParams {
   readonly title: string;
   readonly inkmlXml: string | Uint8Array;
   readonly presentationHtml: string | Uint8Array;
+  readonly backgroundPdfBytes?: Uint8Array | null;
 }
 
 export interface UpdateInkMlPageParams {
@@ -64,6 +65,7 @@ export interface UpdateInkMlPageParams {
   readonly title: string;
   readonly inkmlXml: string | Uint8Array;
   readonly presentationHtml: string | Uint8Array;
+  readonly backgroundPdfBytes?: Uint8Array | null;
 }
 
 export interface VerifiedOneNotePageResult {

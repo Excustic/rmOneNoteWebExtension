@@ -97,14 +97,34 @@ describe('Phase 6: Microsoft Graph OneNote Client, Throttling, and Directory Cac
       title: 'Updated Page',
       inkmlXml: '<inkml:ink></inkml:ink>',
       presentationHtml: '<html><head></head><body><p>Body</p></body></html>',
+      backgroundPdfBytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
       boundary: 'patch_boundary_456',
     });
     const updateText = UTF8_DECODER.decode(updatePayload.body);
     expect(updateText).toContain(
       'Content-Disposition: form-data; name="Commands"\r\nContent-Type: application/json'
     );
+    expect(updateText).toContain(
+      'Content-Disposition: form-data; name="background"; filename="background.pdf"\r\nContent-Type: application/pdf'
+    );
+    expect(updateText).toContain('data-render-src=\\"name:background\\"');
     expect(updateText).toContain('"target":"body","action":"replace"');
     expect(updateText).toContain('<title>Updated Page</title>');
+
+    const uploadWithPdf = buildUploadInkMlMultipart({
+      title: 'PDF Page 1',
+      inkmlXml: '<inkml:ink></inkml:ink>',
+      presentationHtml:
+        '<html><head></head><body><img data-render-src="name:background" style="position:absolute;top:0;left:0;z-index:-1" /><p>Note</p></body></html>',
+      backgroundPdfBytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      boundary: 'pdf_upload_boundary',
+    });
+    const uploadPdfText = UTF8_DECODER.decode(uploadWithPdf.body);
+    expect(uploadPdfText).toContain(
+      'Content-Disposition: form-data; name="background"; filename="background.pdf"\r\nContent-Type: application/pdf'
+    );
+    // Should not duplicate data-render-src="name:background" if already present in HTML
+    expect(uploadPdfText.match(/data-render-src="name:background"/g)).toHaveLength(1);
   });
 
   it('parses Retry-After headers and enforces bounded concurrency with AsyncSemaphore', async () => {

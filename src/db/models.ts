@@ -18,6 +18,8 @@ export interface DocumentRecord {
   lastModified: string;
   /** Cached OneNote web/client URL once the target notebook is resolved. */
   oneNoteNotebookUrl: string | null;
+  /** Optional Sync15 SHA-256 blob hash of `<documentId>.pdf` when the document is a PDF. */
+  pdfBlobHash?: string | null;
 }
 
 export type PageSyncStatus =
@@ -63,6 +65,10 @@ export interface PageRecord {
   oneNotePageUrl: string | null;
   retryCount: number;
   lastError: string | null;
+  /** Optional Sync15 SHA-256 blob hash of `<documentId>.pdf` if backed by a PDF. */
+  pdfBlobHash?: string | null;
+  /** 0-based page index inside `<documentId>.pdf`, or `null` for non-PDF / inserted blank pages. */
+  pdfPageIndex?: number | null;
 }
 
 export interface OneNoteSectionCacheEntry {

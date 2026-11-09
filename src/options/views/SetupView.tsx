@@ -1,7 +1,8 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react';
-import { type AuthStatusSummary, getAuthStatusSummary } from '../../auth/authStore';
+import type { AuthStatusSummary } from '../../auth/authStore';
 import { ext } from '../../shared/browser';
 import type { RuntimeResponse, SyncOverviewState } from '../../shared/messaging';
+import { useDataSource } from '../context/DataSourceContext';
 
 interface SetupViewProps {
   overview: SyncOverviewState;
@@ -38,6 +39,7 @@ function requestHostOriginsFromGesture(origins: string[]): Promise<boolean> {
 }
 
 export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewProps) {
+  const { sendMessage, getAuthSummary, isDemo } = useDataSource();
   const [authSummary, setAuthSummary] = useState<AuthStatusSummary | null>(null);
   const [otpCode, setOtpCode] = useState('');
 
@@ -49,9 +51,9 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
   const [copyFeedback, setCopyFeedback] = useState('');
 
   const reloadSummary = useCallback(async () => {
-    const summary = await getAuthStatusSummary();
+    const summary = await getAuthSummary();
     setAuthSummary(summary);
-  }, []);
+  }, [getAuthSummary]);
 
   useEffect(() => {
     void reloadSummary();
@@ -59,7 +61,7 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
 
   async function handlePairRemarkable(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const permissionPromise = requestHostOriginsFromGesture(REMARKABLE_HOST_ORIGINS);
+    const permissionPromise = isDemo ? Promise.resolve(true) : requestHostOriginsFromGesture(REMARKABLE_HOST_ORIGINS);
     setIsRmBusy(true);
     setRmFeedback(null);
 
@@ -71,7 +73,7 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
         );
       }
 
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'PAIR_REMARKABLE',
         code: otpCode,
       })) as RuntimeResponse | undefined;
@@ -98,7 +100,7 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
   }
 
   async function handleVerifyRemarkable() {
-    const permissionPromise = requestHostOriginsFromGesture(REMARKABLE_HOST_ORIGINS);
+    const permissionPromise = isDemo ? Promise.resolve(true) : requestHostOriginsFromGesture(REMARKABLE_HOST_ORIGINS);
     setIsRmBusy(true);
     setRmFeedback(null);
     try {
@@ -109,7 +111,7 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
         );
       }
 
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'VERIFY_REMARKABLE_SESSION',
       })) as RuntimeResponse | undefined;
 
@@ -139,7 +141,7 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
     setIsRmBusy(true);
     setRmFeedback(null);
     try {
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'DISCONNECT_REMARKABLE',
       })) as RuntimeResponse | undefined;
 
@@ -160,7 +162,7 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
   }
 
   async function handleSignInMicrosoft() {
-    const permissionPromise = requestHostOriginsFromGesture(MICROSOFT_HOST_ORIGINS);
+    const permissionPromise = isDemo ? Promise.resolve(true) : requestHostOriginsFromGesture(MICROSOFT_HOST_ORIGINS);
     setIsMsBusy(true);
     setMsFeedback(null);
 
@@ -172,7 +174,7 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
         );
       }
 
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'SIGN_IN_MICROSOFT',
       })) as RuntimeResponse | undefined;
 
@@ -197,7 +199,7 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
   }
 
   async function handleVerifyMicrosoft() {
-    const permissionPromise = requestHostOriginsFromGesture(MICROSOFT_HOST_ORIGINS);
+    const permissionPromise = isDemo ? Promise.resolve(true) : requestHostOriginsFromGesture(MICROSOFT_HOST_ORIGINS);
     setIsMsBusy(true);
     setMsFeedback(null);
     try {
@@ -208,7 +210,7 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
         );
       }
 
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'VERIFY_MICROSOFT_SESSION',
       })) as RuntimeResponse | undefined;
 
@@ -238,7 +240,7 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
     setIsMsBusy(true);
     setMsFeedback(null);
     try {
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'SIGN_OUT_MICROSOFT',
       })) as RuntimeResponse | undefined;
 
@@ -280,7 +282,10 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-4">
+      <header
+        data-tour="setup-header"
+        className="flex flex-wrap items-center justify-between gap-4"
+      >
         <div>
           <h1 id="main-heading" tabIndex={-1} className="text-2xl font-semibold text-slate-900">
             Account Setup
@@ -322,7 +327,10 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-6 shadow-2xs">
+        <section
+          data-tour="setup-remarkable-section"
+          className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-6 shadow-2xs"
+        >
           <div>
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-base font-semibold text-slate-900">
@@ -433,7 +441,10 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
           </p>
         </section>
 
-        <section className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-6 shadow-2xs">
+        <section
+          data-tour="setup-microsoft-section"
+          className="flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-6 shadow-2xs"
+        >
           <div>
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-base font-semibold text-slate-900">

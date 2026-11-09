@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-09
+
 ### Added
 - Initial Vite + React + TypeScript Manifest V3 scaffold (`pnpm` workspace).
 - Dual-target MV3 build pipeline via `vite-plugin-web-extension` outputting `dist/chromium` (Chrome, Edge, Opera service worker) and `dist/firefox` (Firefox MV3 event page + Gecko add-on metadata).
@@ -33,3 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unified `Sync Control` view (`src/options/views/SyncControlView.tsx`, `src/options/components/SyncStatusIcon.tsx`): combines the hierarchical reMarkable folder/document tree with per-item status icons (uploaded, failed, active uploading, pending), last synced timestamps, OneNote links, manual sync buttons, visual tree guide lines, deep multi-level tri-state folder checkboxes (`-` indeterminate), `selected/total` folder document counters, and a slide-in Pages Side Panel for per-page inspection and manual sync.
 - Dashboard 30-day synced activity history (`src/options/views/DashboardView.tsx`): filterable log of all pages uploaded within the last 30 days with OneNote deep links and manual `Re-sync` actions.
 - Resizable main container width divider and preference (`src/options/OptionsApp.tsx`, `src/options/views/SettingsView.tsx`, `src/storage/preferences.ts`): hold-and-drag vertical resize divider (`760px` to `2400px`, default `1280px`) with keyboard separator controls and synced slider/numeric setting.
+- Annotated PDF page background synchronization (`src/converter/pdfExtractor.ts`, `src/remarkable/metadataParser.ts`, `src/onenote/multipart.ts`, `src/sync/syncEngine.ts`): detects `<documentId>.pdf` attachments and firmware 3.x `cPages.pages[].redir.value` page redirection mappings, slices the exact 1-page PDF in memory via `pdf-lib`, and uploads it as an `application/pdf` multipart background rendered via Microsoft Graph `<img data-render-src="name:background" />` behind the InkML ink layer.
+- Interactive Onboarding Tour and safe Demo Mode (`src/options/tour/`, `src/options/demo/`, `src/options/context/`): 15-step guided walkthrough highlighting Account Setup, Dashboard metrics, and Sync Control (emphasizing automatic future syncing for selected folders). Uses an isolated demo database (`rmOneNoteDemoDb`) and simulated messenger via `DataSourceContext` so users can test live buttons, tree expansions, and manual syncing without modifying real accounts or files.
+- Sidebar "Take Interactive Tour" button (`src/options/components/Sidebar.tsx`) and first-launch tour prompt with persistent completion state.
+- Automated CI/CD pipeline (`.github/workflows/ci.yml`): automated TypeScript typechecking, Vitest unit test suite execution, dual-target MV3 compilation, and extension bundle packaging on every push and pull request, with automated GitHub Releases on semantic version tags.
+- Cross-browser distribution packaging script (`scripts/package.mjs`, `package` npm script): zero-dependency standard-library packager generating production-ready distribution archives for Google Chrome, Microsoft Edge, Opera, and Mozilla Firefox (`.zip` and `.xpi`), along with cryptographic SHA-256 checksums in `artifacts/SHA256SUMS.txt`.
+
+### Fixed
+- Landscape PDF ink alignment: physical 226 DPI (`2540/226` himetric) conversion factor and full-page bounding box covering negative horizontal offsets so strokes on horizontal PDF pages land on their exact grid coordinates.
+- Re-sync page replacement: Microsoft Graph ignores InkML on `PATCH /pages/{id}/content` and appends duplicate PDF printouts; re-syncs now create a fresh page via `POST` before deleting the superseded page ID.
+- Options page sidebar scrolling: pinned sidebar to `h-screen overflow-hidden` and tightened vertical spacing, ensuring only the main content area scrolls on taller views like Settings.
+- Onboarding tour interaction and alignment: resolved spotlight misalignment when the "Both Accounts Connected" banner appears on Slide 4 using RAF tracking, removed full-screen backdrop click interceptor and blur, auto-expanded demo folders for notebook inspection, expanded dashboard overview focus to all three panels, added container divider and load folders slides, generalized holistic settings slide, and spotlighted the sidebar tour button.

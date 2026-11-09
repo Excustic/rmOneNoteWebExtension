@@ -106,40 +106,79 @@ export function encodeMultipartFormData(
   };
 }
 
+const BACKGROUND_RENDER_IMG_TAG =
+  '<img data-render-src="name:background" style="position:absolute;top:0;left:0;z-index:-1" />';
+
+function ensureBackgroundRenderElement(html: string): string {
+  if (/data-render-src\s*=\s*["']name:background["']/i.test(html)) {
+    return html;
+  }
+  if (/<body[^>]*>/i.test(html)) {
+    return html.replace(/<body[^>]*>/i, (match) => `${match}\n        ${BACKGROUND_RENDER_IMG_TAG}`);
+  }
+  return `${BACKGROUND_RENDER_IMG_TAG}\n${html}`;
+}
+
 export function buildUploadInkMlMultipart(params: {
   readonly title: string;
   readonly inkmlXml: string | Uint8Array;
   readonly presentationHtml: string | Uint8Array;
+  readonly backgroundPdfBytes?: Uint8Array | null;
   readonly boundary?: string;
 }): EncodedMultipartPayload {
-  const normalizedHtml = ensurePresentationHtmlTitle(params.presentationHtml, params.title);
+  const hasBackground =
+    params.backgroundPdfBytes !== undefined &&
+    params.backgroundPdfBytes !== null &&
+    params.backgroundPdfBytes.byteLength > 0;
+  let normalizedHtml = ensurePresentationHtmlTitle(params.presentationHtml, params.title);
+  if (hasBackground) {
+    normalizedHtml = ensureBackgroundRenderElement(normalizedHtml);
+  }
 
-  return encodeMultipartFormData(
-    [
-      {
-        name: 'presentation-onenote-inkml',
-        filename: 'drawing.xml',
-        contentType: 'application/inkml+xml',
-        data: params.inkmlXml,
-      },
-      {
-        name: 'presentation',
-        filename: 'presentation.html',
-        contentType: 'text/html',
-        data: normalizedHtml,
-      },
-    ],
-    params.boundary
-  );
+  const parts: MultipartFormPart[] = [
+    {
+      name: 'presentation-onenote-inkml',
+      filename: 'drawing.xml',
+      contentType: 'application/inkml+xml',
+      data: params.inkmlXml,
+    },
+  ];
+
+  if (hasBackground && params.backgroundPdfBytes) {
+    parts.push({
+      name: 'background',
+      filename: 'background.pdf',
+      contentType: 'application/pdf',
+      data: params.backgroundPdfBytes,
+    });
+  }
+
+  parts.push({
+    name: 'presentation',
+    filename: 'presentation.html',
+    contentType: 'text/html',
+    data: normalizedHtml,
+  });
+
+  return encodeMultipartFormData(parts, params.boundary);
 }
 
 export function buildUpdateInkMlMultipart(params: {
   readonly title: string;
   readonly inkmlXml: string | Uint8Array;
   readonly presentationHtml: string | Uint8Array;
+  readonly backgroundPdfBytes?: Uint8Array | null;
   readonly boundary?: string;
 }): EncodedMultipartPayload {
-  const normalizedHtml = ensurePresentationHtmlTitle(params.presentationHtml, params.title);
+  const hasBackground =
+    params.backgroundPdfBytes !== undefined &&
+    params.backgroundPdfBytes !== null &&
+    params.backgroundPdfBytes.byteLength > 0;
+  let normalizedHtml = ensurePresentationHtmlTitle(params.presentationHtml, params.title);
+  if (hasBackground) {
+    normalizedHtml = ensureBackgroundRenderElement(normalizedHtml);
+  }
+
   const patchCommands = [
     {
       target: 'body',
@@ -148,21 +187,30 @@ export function buildUpdateInkMlMultipart(params: {
     },
   ];
 
-  return encodeMultipartFormData(
-    [
-      {
-        name: 'Commands',
-        contentType: 'application/json',
-        data: JSON.stringify(patchCommands),
-      },
-      {
-        name: 'presentation-onenote-inkml',
-        filename: 'drawing.xml',
-        contentType: 'application/inkml+xml',
-        data: params.inkmlXml,
-      },
-    ],
-    params.boundary
-  );
+  const parts: MultipartFormPart[] = [
+    {
+      name: 'Commands',
+      contentType: 'application/json',
+      data: JSON.stringify(patchCommands),
+    },
+  ];
+
+  if (hasBackground && params.backgroundPdfBytes) {
+    parts.push({
+      name: 'background',
+      filename: 'background.pdf',
+      contentType: 'application/pdf',
+      data: params.backgroundPdfBytes,
+    });
+  }
+
+  parts.push({
+    name: 'presentation-onenote-inkml',
+    filename: 'drawing.xml',
+    contentType: 'application/inkml+xml',
+    data: params.inkmlXml,
+  });
+
+  return encodeMultipartFormData(parts, params.boundary);
 }
 

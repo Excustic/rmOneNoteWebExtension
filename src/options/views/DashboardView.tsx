@@ -1,8 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo, useState } from 'react';
-import { db } from '../../db/db';
 import type { PageRecord } from '../../db/models';
-import { ext } from '../../shared/browser';
 import { LegacyIcon } from '../../shared/legacyIcons';
 import type { RuntimeResponse, SyncOverviewState } from '../../shared/messaging';
 import type { OptionsRouteId } from '../../shared/routes';
@@ -12,6 +10,7 @@ import {
   isPageActivelySyncing,
   SyncStatusBadge,
 } from '../components/SyncStatusIcon';
+import { useDataSource } from '../context/DataSourceContext';
 
 interface DashboardViewProps {
   overview: SyncOverviewState;
@@ -35,7 +34,8 @@ export function DashboardView({
   const [isSyncing, setIsSyncing] = useState(false);
   const [feedback, setFeedback] = useState<{ isError: boolean; text: string } | null>(null);
 
-  const pages = useLiveQuery(async () => db.pages.toArray(), [], [] as PageRecord[]);
+  const { db, sendMessage } = useDataSource();
+  const pages = useLiveQuery(async () => db.pages.toArray(), [db], [] as PageRecord[]);
 
   const overallCounts = useMemo(() => {
     let uploaded = 0;
@@ -106,7 +106,7 @@ export function DashboardView({
     setIsSyncing(true);
     setFeedback(null);
     try {
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'TRIGGER_MANUAL_SYNC',
       })) as RuntimeResponse | undefined;
 
@@ -133,7 +133,7 @@ export function DashboardView({
     setIsSyncing(true);
     setFeedback(null);
     try {
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'MANUAL_SYNC_ITEMS',
         pages: [{ documentId, pageId }],
         runNow: true,
@@ -160,7 +160,7 @@ export function DashboardView({
 
   async function handleCancelPage(documentId: string, pageId: string) {
     try {
-      const response = (await ext.runtime.sendMessage({
+      const response = (await sendMessage({
         type: 'CANCEL_SYNC_ITEM',
         documentId,
         pageId,
@@ -202,6 +202,7 @@ export function DashboardView({
               </button>
               <button
                 type="button"
+                data-tour="dashboard-sync-now-btn"
                 disabled={isEngineBusy}
                 onClick={() => void handleManualSync()}
                 className="inline-flex min-h-10 items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-55"
@@ -229,11 +230,10 @@ export function DashboardView({
         <div
           role="status"
           aria-live="polite"
-          className={`rounded-lg border px-4 py-3 text-xs font-medium ${
-            feedback.isError
-              ? 'border-rose-200 bg-rose-50 text-rose-700'
-              : 'border-slate-200 bg-white text-slate-700'
-          }`}
+          className={`rounded-lg border px-4 py-3 text-xs font-medium ${feedback.isError
+            ? 'border-rose-200 bg-rose-50 text-rose-700'
+            : 'border-slate-200 bg-white text-slate-700'
+            }`}
         >
           {feedback.text}
         </div>
@@ -271,20 +271,19 @@ export function DashboardView({
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div data-tour="dashboard-overview-cards" className="grid gap-4 sm:grid-cols-3">
         <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
               Pipeline State
             </h2>
             <span
-              className={`h-2.5 w-2.5 rounded-full ${
-                overview.phase === 'Error'
-                  ? 'bg-rose-500'
-                  : isEngineBusy
-                    ? 'animate-pulse bg-blue-500'
-                    : 'bg-emerald-500'
-              }`}
+              className={`h-2.5 w-2.5 rounded-full ${overview.phase === 'Error'
+                ? 'bg-rose-500'
+                : isEngineBusy
+                  ? 'animate-pulse bg-blue-500'
+                  : 'bg-emerald-500'
+                }`}
               aria-hidden="true"
             />
           </div>
@@ -312,11 +311,34 @@ export function DashboardView({
                 ? '1 of 2 Connected'
                 : 'Pending'}
           </p>
-          <p className="mt-1 text-xs text-slate-500">
-            {overview.isConfigured
-              ? `reMarkable paired${overview.microsoftAccount ? ` | ${overview.microsoftAccount}` : ' | Microsoft connected'}`
-              : `reMarkable: ${overview.remarkablePaired ? 'Paired' : 'Unpaired'} | Microsoft: ${overview.microsoftConnected ? 'Connected' : 'Pending'}`}
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexDirection: 'row' }}>
+            <img
+              src="/icons/Microsoft_logo.png"
+              alt=""
+              width={4}
+              height={4}
+              className="h-4 w-4 shrink-0 rounded-lg object-contain"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              {overview.microsoftConnected
+                ? overview.microsoftAccount
+                  ? `Connected - ${overview.microsoftAccount}`
+                  : 'Connected'
+                : 'Pending'}
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexDirection: 'row' }}>
+            <img
+              src="/icons/remarkable_logo.png"
+              alt=""
+              width={4}
+              height={4}
+              className="h-4 w-4 shrink-0 rounded-lg object-contain"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              {overview.remarkablePaired ? 'Paired' : 'Unpaired'}
+            </p>
+          </div>
         </article>
 
         <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs">
@@ -336,7 +358,10 @@ export function DashboardView({
       </div>
 
       {/* Synced Activity (Last 30 Days) */}
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-2xs">
+      <section
+        data-tour="dashboard-activity-section"
+        className="rounded-xl border border-slate-200 bg-white p-6 shadow-2xs"
+      >
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 id="recent-activity-heading" className="text-base font-semibold text-slate-900">
@@ -378,17 +403,15 @@ export function DashboardView({
                 type="button"
                 aria-pressed={activeTab}
                 onClick={() => setFilter(id)}
-                className={`inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                  activeTab
-                    ? 'bg-slate-900 text-white'
-                    : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                }`}
+                className={`inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors ${activeTab
+                  ? 'bg-slate-900 text-white'
+                  : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
               >
                 <span>{label}</span>
                 <span
-                  className={`rounded-full px-1.5 py-0.2 text-[10px] ${
-                    activeTab ? 'bg-slate-700 text-slate-100' : 'bg-slate-100 text-slate-600'
-                  }`}
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] ${activeTab ? 'bg-slate-700 text-slate-100' : 'bg-slate-100 text-slate-600'
+                    }`}
                 >
                   {recentCounts[id]}
                 </span>

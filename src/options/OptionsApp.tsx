@@ -3,6 +3,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -22,7 +23,11 @@ import {
 } from '../storage/preferences';
 import { dismissBackupImportWarning } from '../storage/syncLedger';
 import { Sidebar } from './components/Sidebar';
+import { DataSourceProvider } from './context/DataSourceContext';
+import { createDemoDataSource, seedDemoDatabase } from './demo/demoDataSource';
 import { useHashRoute } from './hooks/useHashRoute';
+import { TOUR_STEPS } from './tour/tourSteps';
+import { TourOverlay } from './tour/TourOverlay';
 import { DashboardView } from './views/DashboardView';
 import { SettingsView } from './views/SettingsView';
 import { SetupView } from './views/SetupView';
@@ -42,6 +47,14 @@ export function OptionsApp() {
   const [overview, setOverview] = useState<SyncOverviewState>(DEFAULT_SYNC_OVERVIEW);
   const [containerWidthPx, setContainerWidthPx] = useState<number>(DEFAULT_CONTAINER_WIDTH_PX);
   const [activeDragSide, setActiveDragSide] = useState<ResizeEdgeSide | null>(null);
+
+  const [isTourActive, setIsTourActive] = useState(false);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+
+  const demoDataSource = useMemo(
+    () => createDemoDataSource((next) => setOverview(next)),
+    [],
+  );
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<{
@@ -66,10 +79,64 @@ export function OptionsApp() {
     }
   }, []);
 
+  const handleStartTour = useCallback(async (stepIndex = 0) => {
+    await seedDemoDatabase();
+    demoDataSource.setInitialSetupState(stepIndex <= 3);
+    setOverview(demoDataSource.getOverview());
+    setIsTourActive(true);
+    setCurrentStepIndex(stepIndex);
+
+    const step = TOUR_STEPS[stepIndex];
+    if (step && step.route !== route) {
+      navigate(step.route);
+    }
+  }, [demoDataSource, navigate, route]);
+
+  const handleStopTour = useCallback(() => {
+    setIsTourActive(false);
+    void ext.storage.local.set({ rm_has_completed_tour: true });
+    void refreshOverview();
+  }, [refreshOverview]);
+
+  const handleNextTourStep = useCallback(() => {
+    if (currentStepIndex >= TOUR_STEPS.length - 1) {
+      handleStopTour();
+      return;
+    }
+
+    const nextIdx = currentStepIndex + 1;
+    setCurrentStepIndex(nextIdx);
+
+    const nextStep = TOUR_STEPS[nextIdx];
+    if (nextStep && nextStep.route !== route) {
+      navigate(nextStep.route);
+    }
+  }, [currentStepIndex, handleStopTour, navigate, route]);
+
+  const handlePrevTourStep = useCallback(() => {
+    if (currentStepIndex <= 0) {
+      return;
+    }
+
+    const prevIdx = currentStepIndex - 1;
+    setCurrentStepIndex(prevIdx);
+
+    const prevStep = TOUR_STEPS[prevIdx];
+    if (prevStep && prevStep.route !== route) {
+      navigate(prevStep.route);
+    }
+  }, [currentStepIndex, navigate, route]);
+
   useEffect(() => {
     void refreshOverview();
     void getPreferences().then((prefs) => {
       setContainerWidthPx(prefs.containerWidthPx);
+    });
+
+    void ext.storage.local.get(['rm_has_completed_tour']).then((res) => {
+      if (!res?.rm_has_completed_tour) {
+        void handleStartTour(0);
+      }
     });
 
     const onStorageChange = (changes: Record<string, unknown>, areaName: string) => {
@@ -207,6 +274,7 @@ export function OptionsApp() {
         return (
           <SyncControlView
             overview={overview}
+            currentTourStepId={currentStep?.id}
             onOpenSetup={() => navigate('setup')}
             onSyncStateChanged={(next) => {
               if (next) {
@@ -246,8 +314,10 @@ export function OptionsApp() {
     }
   }
 
+  const currentStep = isTourActive ? TOUR_STEPS[currentStepIndex] ?? null : null;
+
   return (
-    <div className="flex min-h-screen bg-slate-50 text-slate-900">
+    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900">
       <a
         href="#main-heading"
         className="visually-hidden fixed top-3 left-3 z-50 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white shadow-md"
@@ -255,14 +325,37 @@ export function OptionsApp() {
         Skip to main content
       </a>
 
-      <Sidebar activeRoute={route} isConfigured={overview.isConfigured} />
+      <Sidebar
+        activeRoute={route}
+        isConfigured={overview.isConfigured}
+        onStartTour={() => void handleStartTour(0)}
+      />
 
-      <main className="flex-1 overflow-y-auto px-8 py-8 lg:px-12 lg:py-10">
+      <main className="flex-1 h-full overflow-y-auto px-8 py-8 lg:px-12 lg:py-10">
         <div
           ref={containerRef}
           className="relative mx-auto min-h-[calc(100vh-5rem)] w-full px-6"
           style={{ maxWidth: `${containerWidthPx}px` }}
         >
+          {isTourActive ? (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs text-blue-900 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" aria-hidden="true" />
+                <span className="font-semibold">Interactive Demo Tour Active</span>
+                <span className="text-blue-700">
+                  You can click buttons and test features safely. Real data is not modified.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleStopTour}
+                className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-medium text-blue-800 transition-colors hover:bg-blue-100"
+              >
+                Exit Tour
+              </button>
+            </div>
+          ) : null}
+
           {/* Left edge resize divider */}
           <div
             role="separator"
@@ -285,11 +378,14 @@ export function OptionsApp() {
             className="container-resize-handle hidden lg:block"
           />
 
-          {renderActiveView()}
+          <DataSourceProvider value={isTourActive ? demoDataSource : undefined}>
+            {renderActiveView()}
+          </DataSourceProvider>
 
           {/* Right edge resize divider */}
           <div
             role="separator"
+            data-tour="container-resize-divider"
             aria-orientation="vertical"
             aria-label="Resize main container width from right edge"
             aria-valuemin={MIN_CONTAINER_WIDTH_PX}
@@ -306,7 +402,7 @@ export function OptionsApp() {
             data-side="right"
             data-dragging={activeDragSide === 'right' ? 'true' : 'false'}
             data-peer-dragging={activeDragSide === 'left' ? 'true' : 'false'}
-            className="container-resize-handle hidden lg:block"
+            className="container-resize-handle block"
           />
 
           {activeDragSide !== null && (
@@ -316,6 +412,17 @@ export function OptionsApp() {
           )}
         </div>
       </main>
+
+      {isTourActive && currentStep ? (
+        <TourOverlay
+          step={currentStep}
+          stepIndex={currentStepIndex}
+          totalSteps={TOUR_STEPS.length}
+          onNext={handleNextTourStep}
+          onPrev={handlePrevTourStep}
+          onSkip={handleStopTour}
+        />
+      ) : null}
     </div>
   );
 }

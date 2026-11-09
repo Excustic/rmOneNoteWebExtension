@@ -89,6 +89,11 @@ export interface ExtractedContentPages {
   /** Whether `.content` carried an explicit `cPages.pages` or `pages` list. */
   hasExplicitPageList: boolean;
   orderedPageIds: string[];
+  /**
+   * 0-based PDF page index for each entry in `orderedPageIds` (`null` when the entry
+   * is an inserted blank page inside a PDF that has no `redir` target).
+   */
+  pdfPageIndices: Array<number | null>;
 }
 
 /**
@@ -121,33 +126,63 @@ function parseContentPageList(rawJson: string): ExtractedContentPages {
       return a.originalOrder - b.originalOrder;
     });
 
+    const hasExplicitRedir = indexed.some(
+      ({ entry }) => typeof entry.redir?.value === 'number' && Number.isFinite(entry.redir.value),
+    );
+
     return {
       hasExplicitPageList: true,
       orderedPageIds: indexed.map(({ entry }) => entry.id!.trim()),
+      pdfPageIndices: indexed.map(({ entry }, i) => {
+        if (hasExplicitRedir) {
+          const redirVal = entry.redir?.value;
+          return typeof redirVal === 'number' && Number.isInteger(redirVal) && redirVal >= 0
+            ? redirVal
+            : null;
+        }
+        return i;
+      }),
     };
   }
 
   if (Array.isArray(parsed.pages)) {
     const ids: string[] = [];
-    for (const item of parsed.pages) {
+    const pdfPageIndices: Array<number | null> = [];
+    const redirMap = Array.isArray(parsed.redirectionPageMap) ? parsed.redirectionPageMap : null;
+
+    for (let i = 0; i < parsed.pages.length; i++) {
+      const item = parsed.pages[i];
+      let pageId = '';
       if (typeof item === 'string' && item.trim().length > 0) {
-        ids.push(item.trim());
+        pageId = item.trim();
       } else if (typeof item === 'object' && item !== null && typeof item.id === 'string') {
-        const trimmed = item.id.trim();
-        if (trimmed.length > 0) {
-          ids.push(trimmed);
+        pageId = item.id.trim();
+      }
+
+      if (pageId.length > 0) {
+        const positionIndex = ids.length;
+        ids.push(pageId);
+        if (redirMap) {
+          const mapped = redirMap[i];
+          pdfPageIndices.push(
+            typeof mapped === 'number' && Number.isInteger(mapped) && mapped >= 0 ? mapped : null,
+          );
+        } else {
+          pdfPageIndices.push(positionIndex);
         }
       }
     }
     return {
       hasExplicitPageList: true,
       orderedPageIds: ids,
+      pdfPageIndices,
     };
   }
 
   return {
     hasExplicitPageList: false,
     orderedPageIds: [],
+    pdfPageIndices: [],
   };
 }
 
@@ -165,6 +200,9 @@ export function resolveDocumentRmPages(
 ): ResolvedRemarkablePage[] {
   const rmPrefix = `${documentId}/`;
   const rmSuffix = '.rm';
+  const pdfTarget = `${documentId}.pdf`;
+  const pdfEntry = docSchemaEntries.find((entry) => entry.id === pdfTarget);
+  const pdfBlobHash = pdfEntry ? pdfEntry.hash : null;
 
   const rmEntriesByPageId = new Map<string, Sync15IndexEntry>();
   for (const entry of docSchemaEntries) {
@@ -180,9 +218,9 @@ export function resolveDocumentRmPages(
     return [];
   }
 
-  const { hasExplicitPageList, orderedPageIds } = rawContentJson
+  const { hasExplicitPageList, orderedPageIds, pdfPageIndices } = rawContentJson
     ? parseContentPageList(rawContentJson)
-    : { hasExplicitPageList: false, orderedPageIds: [] };
+    : { hasExplicitPageList: false, orderedPageIds: [], pdfPageIndices: [] };
 
   const resolved: ResolvedRemarkablePage[] = [];
   const seenPageIds = new Set<string>();
@@ -200,12 +238,20 @@ export function resolveDocumentRmPages(
     }
 
     const pageNumber = String(i + 1);
+    const pdfPageIndex =
+      pdfBlobHash !== null ? (pdfPageIndices[i] !== undefined ? pdfPageIndices[i] : i) : null;
     resolved.push({
       pageId,
       pageNumber,
       title: `Page ${pageNumber}`,
       rmBlobHash: rmEntry.hash,
       fileSizeBytes: rmEntry.size,
+      ...(pdfBlobHash !== null
+        ? {
+            pdfBlobHash,
+            pdfPageIndex,
+          }
+        : {}),
     });
   }
 
@@ -213,6 +259,7 @@ export function resolveDocumentRmPages(
   if (!hasExplicitPageList) {
     let fallbackNumber = 1;
     for (const [pageId, rmEntry] of rmEntriesByPageId.entries()) {
+      const zeroBasedIndex = fallbackNumber - 1;
       const pageNumber = String(fallbackNumber++);
       resolved.push({
         pageId,
@@ -220,6 +267,12 @@ export function resolveDocumentRmPages(
         title: `Page ${pageNumber}`,
         rmBlobHash: rmEntry.hash,
         fileSizeBytes: rmEntry.size,
+        ...(pdfBlobHash !== null
+          ? {
+              pdfBlobHash,
+              pdfPageIndex: zeroBasedIndex,
+            }
+          : {}),
       });
     }
   }

@@ -53,6 +53,13 @@ export {
   sceneTreeToPresentationHtml,
 } from './inkmlExporter';
 export {
+  type ExtractedPdfPageResult,
+  extractSinglePdfPage,
+  extractSinglePdfPageFromDocument,
+  extractSinglePdfPageWithMetricsFromDocument,
+  loadSourcePdfDocument,
+} from './pdfExtractor';
+export {
   buildSceneTreeFromBlocks,
   type ParsedRmBlock,
   parseRmSceneTree,

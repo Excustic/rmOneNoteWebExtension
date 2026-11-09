@@ -12,6 +12,7 @@ import { parseRmSceneTree } from './rmParser';
 import type { SceneGroupItem, SceneLineItem, SceneTree } from './sceneItems';
 import {
   type AnchorPositionMap,
+  type BoundingBox,
   buildAnchorPos,
   buildTextDocument,
   getBoundingBox,
@@ -31,6 +32,22 @@ export const INKML_HEIGHT_CONV_CONSTANT = 10;
 export const INKML_PRESSURE_CONV_CONSTANT = 128;
 export const INKML_DEFAULT_CHANNEL_MAX = 32767;
 
+/**
+ * reMarkable stores strokes in device pixels at 226 DPI, while PDF geometry is
+ * in points (72 per inch). xochitl places a PDF page so that 1 pt maps to
+ * exactly 226/72 `.rm` units, horizontally centered on `x = 0` and starting at
+ * `y = 0`. Knowing this lets us map strokes onto OneNote's PDF printout using
+ * physical units instead of guessing from the stroke bounding box.
+ */
+export const RM_DPI = 226;
+export const PDF_POINTS_PER_INCH = 72;
+export const HIMETRIC_PER_INCH = 2540;
+
+/** Physical conversion factor from `.rm` units to himetric (`2540 / 226`). */
+export const INKML_LANDSCAPE_PDF_CONV_CONSTANT = HIMETRIC_PER_INCH / RM_DPI;
+/** The PDF top edge is already `y = 0` in `.rm` space, so no vertical pad. */
+export const INKML_LANDSCAPE_PDF_Y_PAD = 0;
+
 const XML_HEADER =
   '<?xml version="1.0" encoding="utf-8"?>\n' +
   '<inkml:ink xmlns:emma="http://www.w3.org/2003/04/emma" ' +
@@ -45,6 +62,15 @@ export interface RmConversionOptions {
    * `<body>` for annotated PDF background image multipart uploads.
    */
   readonly includeBackgroundImageRef?: boolean;
+  /**
+   * Optional effective visual dimensions (in PDF points) of the underlying PDF
+   * page when syncing an annotated PDF. Used to align horizontal (landscape)
+   * PDF coordinate origins and scale with OneNote's native PDF renderer.
+   */
+  readonly pdfPageSizePt?: {
+    readonly widthPt: number;
+    readonly heightPt: number;
+  } | null;
 }
 
 export interface RmConversionResult {
@@ -140,6 +166,10 @@ interface TraceBuildState {
   maxX: number;
   minY: number;
   maxY: number;
+  widthConv: number;
+  heightConv: number;
+  xPad: number;
+  yPad: number;
   nextTraceId: number;
   traces: string[];
 }
@@ -162,8 +192,8 @@ function scaleCoordinate(
   const xNorm = (x - state.minX) / xRange;
   const yNorm = (y - state.minY) / yRange;
 
-  const newX = Math.trunc(xNorm * xRange * INKML_WIDTH_CONV_CONSTANT + INKML_X_PAD);
-  const newY = Math.trunc(yNorm * yRange * INKML_HEIGHT_CONV_CONSTANT + INKML_Y_PAD);
+  const newX = Math.trunc(xNorm * xRange * state.widthConv + state.xPad);
+  const newY = Math.trunc(yNorm * yRange * state.heightConv + state.yPad);
   return [newX, newY];
 }
 
@@ -231,7 +261,10 @@ function traverseGroupForTraces(
 /**
  * Converts a parsed `SceneTree` into OneNote-compatible InkML XML.
  */
-export function sceneTreeToInkMlXml(tree: SceneTree): {
+export function sceneTreeToInkMlXml(
+  tree: SceneTree,
+  options: RmConversionOptions = {}
+): {
   readonly inkmlXml: string;
   readonly traceCount: number;
 } {
@@ -239,13 +272,41 @@ export function sceneTreeToInkMlXml(tree: SceneTree): {
   const definitionsXml = renderDefinitionsXml(pens);
 
   const anchorPos = buildAnchorPos(tree.rootText);
-  const initialBox = getBoundingBox(tree.root, anchorPos);
+  const pdfSize = options.pdfPageSizePt;
+  const isLandscapePdf =
+    pdfSize !== undefined &&
+    pdfSize !== null &&
+    pdfSize.widthPt > 0 &&
+    pdfSize.heightPt > 0 &&
+    pdfSize.widthPt > pdfSize.heightPt;
+
+  let initialBox: BoundingBox;
+  if (isLandscapePdf) {
+    // The box must cover the whole PDF page in `.rm` units. If it were smaller
+    // than the page, the leftmost stroke would widen `minX` and get pinned to
+    // the page's left edge, shifting all ink horizontally.
+    const rmUnitsPerPt = RM_DPI / PDF_POINTS_PER_INCH;
+    const landscapeHalfWidth = Math.round((pdfSize.widthPt / 2) * rmUnitsPerPt);
+    const landscapeHeight = Math.round(pdfSize.heightPt * rmUnitsPerPt);
+    initialBox = getBoundingBox(tree.root, anchorPos, {
+      xMin: -landscapeHalfWidth,
+      xMax: landscapeHalfWidth,
+      yMin: 0,
+      yMax: landscapeHeight,
+    });
+  } else {
+    initialBox = getBoundingBox(tree.root, anchorPos);
+  }
 
   const state: TraceBuildState = {
     minX: initialBox.xMin,
     maxX: initialBox.xMax,
     minY: initialBox.yMin,
     maxY: initialBox.yMax,
+    widthConv: isLandscapePdf ? INKML_LANDSCAPE_PDF_CONV_CONSTANT : INKML_WIDTH_CONV_CONSTANT,
+    heightConv: isLandscapePdf ? INKML_LANDSCAPE_PDF_CONV_CONSTANT : INKML_HEIGHT_CONV_CONSTANT,
+    xPad: INKML_X_PAD,
+    yPad: isLandscapePdf ? INKML_LANDSCAPE_PDF_Y_PAD : INKML_Y_PAD,
     nextTraceId: 1,
     traces: [],
   };
@@ -340,7 +401,7 @@ export function convertRmPage(
   options: RmConversionOptions = {}
 ): RmConversionResult {
   const tree = parseRmSceneTree(rmBytes);
-  const { inkmlXml, traceCount } = sceneTreeToInkMlXml(tree);
+  const { inkmlXml, traceCount } = sceneTreeToInkMlXml(tree, options);
   const { presentationHtml, paragraphCount } = sceneTreeToPresentationHtml(tree, options);
 
   return {
