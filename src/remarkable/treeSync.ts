@@ -7,6 +7,7 @@ import {
   setWhitelist,
   type SyncWhitelist,
 } from '../storage/preferences';
+import { removeSyncedPagesFromLedger } from '../storage/syncLedger';
 import {
   buildFileTreeHierarchy,
   collectVirtualPaths,
@@ -656,6 +657,13 @@ async function executeCloudTreeSync(
 
       for (const [pageId, existingPage] of existingByPageId.entries()) {
         if (!seenActivePageIds.has(pageId)) {
+          // If this is an invalid or corrupted orphan stub without a page number, prune it completely
+          if (!existingPage.pageNumber || existingPage.pageNumber.trim() === '') {
+            pageKeysToDelete.push([docId, pageId]);
+            void removeSyncedPagesFromLedger([{ documentId: docId, pageId }]);
+            continue;
+          }
+
           if (existingPage.status === 'Uploaded' || existingPage.oneNotePageId !== null) {
             if (existingPage.status !== 'Deleted') {
               pagesToPut.push({ ...existingPage, status: 'Deleted' });

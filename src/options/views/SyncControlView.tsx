@@ -568,6 +568,9 @@ export function SyncControlView({
   const pagesByDocId = useMemo(() => {
     const map = new Map<string, PageRecord[]>();
     for (const page of livePages) {
+      if (!page.pageNumber || page.pageNumber.trim() === '') {
+        continue;
+      }
       const list = map.get(page.documentId);
       if (list) {
         list.push(page);

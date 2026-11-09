@@ -9,9 +9,11 @@ import {
   getWhitelist,
   importBackupAndReconcile,
   MAX_LEDGER_ENTRIES,
+  readSyncLedgerSnapshot,
   recordSyncedPagesInLedger,
   reconcileSyncLedgerToDexie,
   registerSyncLedgerAutoReconcile,
+  removeSyncedPagesFromLedger,
   type SyncLedgerEntry,
   setWhitelist,
   updatePreferences,
@@ -138,6 +140,12 @@ describe('UserPreferences, chunked Whitelists, and Cross-PC Rolling Sync Ledger'
     expect(samplePage?.lastSyncTime).toBe(
       new Date((1_762_000_000 + 39) * 1000).toISOString(),
     );
+
+    // Remove entries from ledger (e.g. when pages are purged in mirror mode)
+    const afterRemoveMeta = await removeSyncedPagesFromLedger([batch[0], batch[1]]);
+    expect(afterRemoveMeta.totalSeq).toBe(251);
+    const snap = await readSyncLedgerSnapshot();
+    expect(snap.entries).toHaveLength(248);
   });
 
   it('evicts oldest records past 1,280 entries, warns fresh PCs, and clears warning on backup import', async () => {

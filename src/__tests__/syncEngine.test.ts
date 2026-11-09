@@ -650,7 +650,7 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
     expect(preservedPage?.status).toBe('Deleted');
     expect(preservedPage?.oneNotePageId).toBe('on-del-1');
 
-    // 2. In mirror mode, deleted pages trigger DELETE in OneNote and are purged from IndexedDB
+    // 2. In mirror mode, deleted pages trigger DELETE in OneNote, clear OneNote links, and remain in IndexedDB as Deleted for recovery
     await updatePreferences({ pageSyncStrategy: 'mirror' });
     await runSyncCycle({
       database: testDb,
@@ -660,7 +660,10 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
     expect(deletedUrls).toHaveLength(1);
     expect(deletedUrls[0]).toContain('/pages/on-del-1');
     const purgedPage = await getPage(DOC_ID, PAGE_1_ID, testDb);
-    expect(purgedPage).toBeUndefined();
+    expect(purgedPage).toBeDefined();
+    expect(purgedPage?.status).toBe('Deleted');
+    expect(purgedPage?.oneNotePageId).toBeNull();
+    expect(purgedPage?.pageNumber).toBe('1');
   });
 
   it('renames reordered pages in mirror mode via fast path without re-uploading ink', async () => {

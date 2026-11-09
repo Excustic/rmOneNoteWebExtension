@@ -35,6 +35,7 @@ import { getPreferences, getWhitelist, type SyncWhitelist } from '../storage/pre
 import {
   reconcileSyncLedgerToDexie,
   recordSyncedPagesInLedger,
+  removeSyncedPagesFromLedger,
 } from '../storage/syncLedger';
 import type { PageSyncOutcome, RunSyncCycleOptions, SyncCycleSummary } from './types';
 
@@ -367,19 +368,37 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
         'Uploading',
         `Purging ${deletedPages.length} deleted pages from OneNote...`,
       );
+      const purgedFromOneNote: Array<{ documentId: string; pageId: string }> = [];
       for (const delPage of deletedPages) {
         if (delPage.oneNotePageId) {
           const deleted = await oneNoteClient.deletePage(delPage.oneNotePageId);
           if (deleted) {
-            await database.pages.delete([delPage.documentId, delPage.pageId]);
+            purgedFromOneNote.push({
+              documentId: delPage.documentId,
+              pageId: delPage.pageId,
+            });
+            // Keep the page record in Dexie so its metadata (pageNumber, size, strokes)
+            // is preserved for Deleted Pages inspection and recovery, but clear OneNote references.
+            await updatePageStatus(
+              delPage.documentId,
+              delPage.pageId,
+              'Deleted',
+              {
+                oneNotePageId: null,
+                oneNotePageUrl: null,
+                titleRenameOnly: false,
+              },
+              database,
+            );
           } else {
             console.warn(
               `[SyncEngine] Could not delete OneNote page ${delPage.oneNotePageId} for deleted tablet page.`,
             );
           }
-        } else {
-          await database.pages.delete([delPage.documentId, delPage.pageId]);
         }
+      }
+      if (purgedFromOneNote.length > 0) {
+        await removeSyncedPagesFromLedger(purgedFromOneNote);
       }
     }
   }

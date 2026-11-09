@@ -63,10 +63,12 @@ function isLedgerChunkKey(key: string): boolean {
   return key === LEDGER_META_KEY || key.startsWith(LEDGER_CHUNK_PREFIX);
 }
 
-async function readSyncLedgerSnapshot(): Promise<{
+export interface SyncLedgerSnapshot {
   meta: SyncLedgerMetadata;
   entries: SyncLedgerEntry[];
-}> {
+}
+
+export async function readSyncLedgerSnapshot(): Promise<SyncLedgerSnapshot> {
   const metaObj = await ext.storage.sync.get(LEDGER_META_KEY);
   const rawMeta = metaObj[LEDGER_META_KEY] as Partial<SyncLedgerMetadata> | undefined;
 
@@ -183,6 +185,66 @@ export async function recordSyncedPagesInLedger(
 }
 
 /**
+ * Removes specified pages from the `storage.sync` rolling ledger in a single batched operation.
+ */
+export async function removeSyncedPagesFromLedger(
+  pagesToRemove: ReadonlyArray<{ documentId: string; pageId: string }>,
+): Promise<SyncLedgerMetadata> {
+  const { meta: prevMeta, entries: existingEntries } = await readSyncLedgerSnapshot();
+  if (pagesToRemove.length === 0 || existingEntries.length === 0) {
+    return prevMeta;
+  }
+
+  const removeKeys = new Set(pagesToRemove.map((p) => `${p.documentId}:${p.pageId}`));
+  const filtered = existingEntries.filter(
+    (e) => !removeKeys.has(`${e.documentId}:${e.pageId}`),
+  );
+
+  if (filtered.length === existingEntries.length) {
+    return prevMeta;
+  }
+
+  const nextChunkCount = Math.ceil(filtered.length / LEDGER_ENTRIES_PER_CHUNK);
+  const nextMeta: SyncLedgerMetadata = {
+    chunkCount: nextChunkCount,
+    evictedCount: prevMeta.evictedCount,
+    totalSeq: prevMeta.totalSeq + 1,
+  };
+
+  const toSet: Record<string, unknown> = {
+    [LEDGER_META_KEY]: nextMeta,
+  };
+
+  for (let i = 0; i < nextChunkCount; i++) {
+    const slice = filtered.slice(
+      i * LEDGER_ENTRIES_PER_CHUNK,
+      (i + 1) * LEDGER_ENTRIES_PER_CHUNK,
+    );
+    toSet[`${LEDGER_CHUNK_PREFIX}${i}`] = packSyncLedgerRecords(slice);
+  }
+
+  const toRemove: string[] = [];
+  for (let i = nextChunkCount; i < prevMeta.chunkCount; i++) {
+    toRemove.push(`${LEDGER_CHUNK_PREFIX}${i}`);
+  }
+
+  await ext.storage.sync.set(toSet);
+  if (toRemove.length > 0) {
+    await ext.storage.sync.remove(toRemove);
+  }
+
+  const localState = await readLocalTrackingState();
+  await writeLocalTrackingState({
+    initialized: true,
+    lastSeenSeq: nextMeta.totalSeq,
+    missingHistoryCount: localState.missingHistoryCount,
+    warningDismissed: localState.warningDismissed,
+  });
+
+  return nextMeta;
+}
+
+/**
  * Merges all entries currently in `storage.sync` into local `Dexie.pages` (making local
  * IndexedDB a permanent superset) and evaluates whether this browser missed older evicted
  * entries (e.g. cold install when `evictedCount > 0`).
@@ -196,7 +258,7 @@ export async function reconcileSyncLedgerToDexie(
   ]);
 
   if (entries.length > 0) {
-    await database.transaction('rw', database.pages, async () => {
+    await database.transaction('rw', [database.pages, database.documents], async () => {
       const keys = entries.map((e): [string, string] => [e.documentId, e.pageId]);
       const existingList = await database.pages.bulkGet(keys);
 
@@ -208,6 +270,13 @@ export async function reconcileSyncLedgerToDexie(
         const incomingIso = new Date(entry.syncedAtUnixSec * 1000).toISOString();
 
         if (!existing) {
+          // If the document is already indexed in local Dexie, do not insert a headless stub
+          // with empty pageNumber (which would produce a ghost page).
+          const doc = await database.documents.get(entry.documentId);
+          if (doc) {
+            continue;
+          }
+
           toPut.push({
             documentId: entry.documentId,
             pageId: entry.pageId,

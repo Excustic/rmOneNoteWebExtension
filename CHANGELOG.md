@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Deleted on tablet` badge marking pages removed on the tablet while preserved in OneNote.
 
 ### Fixed
+- Deleted page ghost resurrection and vanishing bug in mirror mode:
+  - Previously, purging a page from OneNote in `mirror` mode completely deleted the record from IndexedDB (`database.pages.delete`). This caused the page to disappear from the user's Deleted Pages view and lose its metadata (`pageNumber`, `fileSizeBytes`, `contentHash`).
+  - Because the page remained in the `storage.sync` ledger, subsequent reconciliations resurrected it as a headless stub with `pageNumber: ''`, appearing in the UI as a blank `Page ` (0 KB).
+  - Implemented `removeSyncedPagesFromLedger` (`syncLedger.ts`) to cleanly evict purged pages from the `storage.sync` ledger upon OneNote deletion.
+  - Updated `syncEngine.ts` to preserve local page records in IndexedDB with `status: 'Deleted'`, clearing only OneNote references (`oneNotePageId: null`) while keeping `pageNumber`, file size, and stroke hashes intact so they remain available in the Deleted Pages list for inspection and recovery.
+  - Added self-healing cleanup in `treeSync.ts` to automatically prune any headless orphan stubs with empty page numbers on the next `Load Folders`, and filtered empty page numbers in `SyncControlView.tsx`.
 - Vertical (portrait) PDF ink alignment: generalized physical 226 DPI himetric scaling factor (`2540 / 226`) and centered page bounding box (`-pageHalfWidth` to `+pageHalfWidth`, `yMin: 0`) across all annotated PDF pages, resolving horizontal ink shift when annotating vertical/portrait PDFs in OneNote.
 - OneNote duplicate page accumulation: resolved 20-page cutoff where Graph's default `$top=20` pagination caused older or newly appended pages to be invisible to the deduplication check, causing repeated uploads.
 
