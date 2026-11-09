@@ -271,6 +271,43 @@ export function SettingsView({
             />
           </div>
 
+          <div data-tour="settings-lifecycle-strategy">
+            <label
+              htmlFor="page-sync-strategy"
+              className="block text-sm font-medium text-slate-700"
+            >
+              Page Deletion &amp; Reordering Strategy
+            </label>
+            <span id="page-sync-strategy-hint" className="mt-0.5 block text-xs text-slate-500">
+              Determines how deletions and page reordering on your reMarkable tablet are reflected in OneNote.
+            </span>
+            <select
+              id="page-sync-strategy"
+              name="pageSyncStrategy"
+              value={prefs.pageSyncStrategy}
+              onChange={(e) =>
+                setPrefs((prev) => ({
+                  ...prev,
+                  pageSyncStrategy: e.target.value as 'mirror' | 'preserve',
+                }))
+              }
+              aria-describedby="page-sync-strategy-hint"
+              className="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-2xs"
+            >
+              <option value="mirror">
+                Mirror reMarkable lifecycle (Recommended) - Auto-delete deleted pages &amp; rename reordered pages
+              </option>
+              <option value="preserve">
+                Preserve OneNote history (Static / Append-only) - Never delete; append (1), (2) on title conflicts
+              </option>
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              {prefs.pageSyncStrategy === 'mirror'
+                ? 'Mirror mode automatically deletes OneNote pages when they are removed on your tablet, and updates OneNote page titles via lightweight Graph rename commands when pages are reordered.'
+                : 'Preserve mode keeps OneNote completely static. OneNote pages are never deleted, reordered pages do not overwrite existing pages (page title collisions are suffixed with count numbers), and tablet status is indicated in Sync Control.'}
+            </p>
+          </div>
+
           <div data-tour="settings-width-control">
             <label
               htmlFor="container-width-range"

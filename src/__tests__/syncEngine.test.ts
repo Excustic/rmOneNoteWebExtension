@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { saveMicrosoftAuth, saveRemarkableAuth } from '../auth/authStore';
 import { extractSinglePdfPage, RM_HEADER_V3 } from '../converter';
 import { RmOneNoteDatabase } from '../db/db';
-import { getDocument, getPage } from '../db/repository';
+import { getDocument, getPage, savePage } from '../db/repository';
 import { REMARKABLE_SYNC_FILES_URL, REMARKABLE_SYNC_ROOT_URL } from '../remarkable';
 import { ext } from '../shared/browser';
 import { setWhitelist, updatePreferences } from '../storage/preferences';
@@ -16,6 +16,7 @@ import {
   runSyncCycle,
   syncAutoSyncAlarmWithPreferences,
 } from '../sync';
+import { resolveNonCollidingPageTitle } from '../sync/syncEngine';
 import { getRawSyncStoreSnapshot, resetMockBrowserStorage, triggerMockAlarm } from './setup';
 
 const FOLDER_ID = '11111111-1111-4111-8111-111111111111';
@@ -588,5 +589,172 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
       '<img data-render-src="name:background" style="position:absolute;top:0;left:0;z-index:-1" />',
     );
     expect(annotatedPdfPagePayload).toContain('%PDF-');
+  });
+
+  it('resolves non-colliding page titles for preserve mode', () => {
+    const existing = new Set(['Page 1', 'Page 2', 'Page 2 (1)']);
+    expect(resolveNonCollidingPageTitle('Page 3', existing)).toBe('Page 3');
+    expect(resolveNonCollidingPageTitle('Page 1', existing)).toBe('Page 1 (1)');
+    expect(resolveNonCollidingPageTitle('Page 2', existing)).toBe('Page 2 (2)');
+  });
+
+  it('purges OneNote pages for deleted tablet pages in mirror mode, but preserves them in preserve mode', async () => {
+    const deletedUrls: string[] = [];
+    const mockFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url.startsWith(REMARKABLE_SYNC_ROOT_URL)) {
+        return new Response(JSON.stringify({ hash: 'empty-root', generation: 1 }));
+      }
+      if (url.startsWith(REMARKABLE_SYNC_FILES_URL)) {
+        return new Response('4\n0:.:0:0', { status: 200 });
+      }
+      if (method === 'DELETE' && url.includes('/pages/')) {
+        deletedUrls.push(url);
+        return new Response(null, { status: 204 });
+      }
+      return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    };
+
+    // 1. In preserve mode, deleted pages stay in IndexedDB and are NOT deleted from OneNote
+    await updatePreferences({ pageSyncStrategy: 'preserve' });
+    await savePage(
+      {
+        documentId: DOC_ID,
+        pageId: PAGE_1_ID,
+        pageNumber: '1',
+        title: 'Page 1',
+        virtualPath: 'Doc/Page 1',
+        fileSizeBytes: 100,
+        lastModified: '2026-11-06T12:00:00.000Z',
+        contentHash: 'hash1',
+        status: 'Deleted',
+        lastSyncTime: '2026-11-06T12:00:00.000Z',
+        oneNotePageId: 'on-del-1',
+        oneNotePageUrl: 'https://onenote/on-del-1',
+        retryCount: 0,
+        lastError: null,
+      },
+      testDb,
+    );
+
+    await runSyncCycle({
+      database: testDb,
+      fetchImpl: mockFetch,
+    });
+
+    expect(deletedUrls).toHaveLength(0);
+    const preservedPage = await getPage(DOC_ID, PAGE_1_ID, testDb);
+    expect(preservedPage).toBeDefined();
+    expect(preservedPage?.status).toBe('Deleted');
+    expect(preservedPage?.oneNotePageId).toBe('on-del-1');
+
+    // 2. In mirror mode, deleted pages trigger DELETE in OneNote and are purged from IndexedDB
+    await updatePreferences({ pageSyncStrategy: 'mirror' });
+    await runSyncCycle({
+      database: testDb,
+      fetchImpl: mockFetch,
+    });
+
+    expect(deletedUrls).toHaveLength(1);
+    expect(deletedUrls[0]).toContain('/pages/on-del-1');
+    const purgedPage = await getPage(DOC_ID, PAGE_1_ID, testDb);
+    expect(purgedPage).toBeUndefined();
+  });
+
+  it('renames reordered pages in mirror mode via fast path without re-uploading ink', async () => {
+    const patchCalls: Array<{ url: string; body: string }> = [];
+    let uploadInkCalls = 0;
+
+    const mockFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      const path = url.replace('https://graph.microsoft.com/v1.0/me/onenote', '');
+
+      if (url.startsWith(REMARKABLE_SYNC_ROOT_URL)) {
+        return new Response(JSON.stringify({ hash: 'root-reorder', generation: 1 }));
+      }
+      if (url.startsWith(REMARKABLE_SYNC_FILES_URL)) {
+        return new Response('4\n0:.:0:0', { status: 200 });
+      }
+      if (path.startsWith('/notebooks') && !path.includes('/sections') && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            value: [
+              {
+                id: 'nb-1',
+                displayName: 'rm_Notebook',
+                links: { oneNoteWebUrl: { href: 'https://onenote.example/nb-1' } },
+                sections: [{ id: 'sec-1', displayName: 'Notebook' }],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (path === '/notebooks/nb-1/sections' && method === 'GET') {
+        return new Response(
+          JSON.stringify({ value: [{ id: 'sec-1', displayName: 'Notebook' }] }),
+          { status: 200 },
+        );
+      }
+      if (path === '/sections/sec-1/pages' && method === 'GET') {
+        return new Response(
+          JSON.stringify({ value: [{ id: 'on-pg-reorder', title: 'Page 9' }] }),
+          { status: 200 },
+        );
+      }
+      if (path === '/pages/on-pg-reorder/content' && method === 'PATCH') {
+        patchCalls.push({ url, body: String(init?.body ?? '') });
+        return new Response(null, { status: 204 });
+      }
+      if (path === '/sections/sec-1/pages' && method === 'POST') {
+        uploadInkCalls += 1;
+        return new Response(JSON.stringify({ id: 'on-pg-new', title: 'Page 3' }), { status: 201 });
+      }
+      return new Response(JSON.stringify({ value: [] }), { status: 200 });
+    };
+
+    await updatePreferences({ pageSyncStrategy: 'mirror', targetSection: 'Default' });
+    await setWhitelist({ syncFiles: [DOC_ID], syncFolders: [] });
+
+    // Seed a page that was moved from Page 9 to Page 3 without stroke changes (titleRenameOnly)
+    await savePage(
+      {
+        documentId: DOC_ID,
+        pageId: PAGE_1_ID,
+        pageNumber: '3',
+        title: 'Page 3',
+        virtualPath: 'Notebook/Page 3',
+        fileSizeBytes: 100,
+        lastModified: '2026-11-06T12:00:00.000Z',
+        contentHash: 'hash-unchanged',
+        status: 'Pending',
+        lastSyncTime: '2026-11-06T11:00:00.000Z',
+        oneNotePageId: 'on-pg-reorder',
+        oneNotePageUrl: 'https://onenote/on-pg-reorder',
+        retryCount: 0,
+        lastError: null,
+        titleRenameOnly: true,
+      },
+      testDb,
+    );
+
+    const summary = await runSyncCycle({
+      database: testDb,
+      fetchImpl: mockFetch,
+    });
+
+    expect(summary.failedCount).toBe(0);
+    expect(summary.uploadedCount).toBe(1);
+    expect(uploadInkCalls).toBe(0); // Zero full ink uploads!
+    expect(patchCalls).toHaveLength(1);
+    expect(JSON.parse(patchCalls[0].body)).toEqual([
+      { target: 'title', action: 'replace', content: 'Page 3' },
+    ]);
+
+    const updated = await getPage(DOC_ID, PAGE_1_ID, testDb);
+    expect(updated?.status).toBe('Uploaded');
+    expect(updated?.titleRenameOnly).toBe(false);
   });
 });

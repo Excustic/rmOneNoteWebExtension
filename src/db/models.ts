@@ -69,6 +69,16 @@ export interface PageRecord {
   pdfBlobHash?: string | null;
   /** 0-based page index inside `<documentId>.pdf`, or `null` for non-PDF / inserted blank pages. */
   pdfPageIndex?: number | null;
+  /**
+   * Original page number when first uploaded or when retained under the 'preserve' strategy,
+   * used to render visual move cues (e.g. `Moved: Page 9 -> Page 3`).
+   */
+  originalPageNumber?: string | null;
+  /**
+   * Fast-path flag indicating the page ink strokes are unchanged and only its OneNote page title
+   * needs to be renamed in Microsoft Graph (`PATCH /pages/{id}/content`).
+   */
+  titleRenameOnly?: boolean;
 }
 
 export interface OneNoteSectionCacheEntry {

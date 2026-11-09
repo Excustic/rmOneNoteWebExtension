@@ -477,6 +477,70 @@ export class OneNoteClient {
   }
 
   /**
+   * Renames an existing OneNote page title via `PATCH /pages/{pageId}/content`
+   * with a JSON command targeting the title: `[{ target: 'title', action: 'replace', content: newTitle }]`.
+   */
+  async renamePage(
+    pageId: string,
+    newTitle: string,
+    maxRetriesOverride?: number
+  ): Promise<boolean> {
+    const maxRetries = Math.max(1, maxRetriesOverride ?? this.maxUploadRetries);
+    const url = `${ONENOTE_GRAPH_BASE_URL}/pages/${encodeURIComponent(pageId)}/content`;
+    const body = JSON.stringify([
+      {
+        target: 'title',
+        action: 'replace',
+        content: newTitle,
+      },
+    ]);
+
+    for (let retry = 0; retry < maxRetries; retry += 1) {
+      try {
+        const response = await this.requestWithAuth(url, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body,
+        });
+
+        if (response.ok) {
+          return true;
+        }
+
+        if (response.status === 404) {
+          return false;
+        }
+
+        if (retry < maxRetries - 1 && isRetryableGraphStatus(response.status)) {
+          const delayMs = computeGraphBackoffMs(retry, {
+            retryAfterHeader: response.headers.get('Retry-After'),
+            jitterMaxSeconds: 3,
+            randomFn: this.randomImpl,
+          });
+          await this.sleepImpl(delayMs);
+          continue;
+        }
+
+        return false;
+      } catch (err) {
+        if (retry < maxRetries - 1 && isNetworkOrTimeoutError(err)) {
+          const delayMs = computeGraphBackoffMs(retry, {
+            jitterMaxSeconds: 3,
+            randomFn: this.randomImpl,
+          });
+          await this.sleepImpl(delayMs);
+          continue;
+        }
+        return false;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Deletes a OneNote page by ID (`DELETE /pages/{pageId}`).
    */
   async deletePage(pageId: string): Promise<boolean> {

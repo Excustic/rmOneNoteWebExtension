@@ -570,6 +570,12 @@ async function executeCloudTreeSync(
             existingPage.lastSyncTime !== null &&
             Date.parse(existingPage.lastSyncTime) + 1000 >= Date.parse(doc.lastModified);
 
+          const isPageNumberChanged = existingPage.pageNumber !== resolvedPage.pageNumber;
+          let originalPageNumber = existingPage.originalPageNumber;
+          if (isPageNumberChanged && prefs.pageSyncStrategy === 'preserve' && !originalPageNumber) {
+            originalPageNumber = existingPage.pageNumber;
+          }
+
           pagesToPut.push({
             ...existingPage,
             pageNumber: resolvedPage.pageNumber,
@@ -587,6 +593,8 @@ async function executeCloudTreeSync(
             lastError: isUnmodifiedLedgerStub ? existingPage.lastError : null,
             pdfBlobHash,
             pdfPageIndex,
+            titleRenameOnly: false,
+            originalPageNumber,
           });
         } else {
           let nextStatus = existingPage.status;
@@ -596,24 +604,51 @@ async function executeCloudTreeSync(
             nextStatus = 'Skipped';
           }
 
+          const isPageNumberChanged = existingPage.pageNumber !== resolvedPage.pageNumber;
+          let titleRenameOnly = existingPage.titleRenameOnly;
+          let originalPageNumber = existingPage.originalPageNumber;
+          let titleToStore = resolvedPage.title;
+
+          if (isPageNumberChanged) {
+            if (prefs.pageSyncStrategy === 'mirror') {
+              if (existingPage.oneNotePageId && canAutoSync) {
+                // In mirror mode with an existing OneNote page, schedule lightweight title rename
+                nextStatus = 'Pending';
+                titleRenameOnly = true;
+              }
+            } else {
+              // In preserve mode, keep OneNote title static and record original tablet page number
+              if (!originalPageNumber) {
+                originalPageNumber = existingPage.pageNumber;
+              }
+              if (existingPage.status === 'Uploaded') {
+                titleToStore = existingPage.title;
+              }
+            }
+          }
+
           if (
             existingPage.pageNumber !== resolvedPage.pageNumber ||
-            existingPage.title !== resolvedPage.title ||
+            existingPage.title !== titleToStore ||
             existingPage.virtualPath !== pageVirtualPath ||
             existingPage.fileSizeBytes !== resolvedPage.fileSizeBytes ||
             existingPage.status !== nextStatus ||
             existingPage.pdfBlobHash !== pdfBlobHash ||
-            existingPage.pdfPageIndex !== pdfPageIndex
+            existingPage.pdfPageIndex !== pdfPageIndex ||
+            existingPage.titleRenameOnly !== titleRenameOnly ||
+            existingPage.originalPageNumber !== originalPageNumber
           ) {
             pagesToPut.push({
               ...existingPage,
               pageNumber: resolvedPage.pageNumber,
-              title: resolvedPage.title,
+              title: titleToStore,
               virtualPath: pageVirtualPath,
               fileSizeBytes: resolvedPage.fileSizeBytes,
               status: nextStatus,
               pdfBlobHash,
               pdfPageIndex,
+              titleRenameOnly,
+              originalPageNumber,
             });
           }
         }

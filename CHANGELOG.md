@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bulk duplicate purging in `syncEngine.ts`: finds and deletes all matching stale pages in a section upon re-sync instead of only the first match.
 - Full document page indexing (Option B) in `metadataParser.ts`: resolves all pages declared in `cPages.pages` or PDF page maps, including unannotated pages (`0 KB (Blank / No strokes)`), ensuring complete document visibility in Sync Control.
 - Selective unannotated page auto-sync: background sync automatically skips blank pages when `syncUnannotatedPdfPages` is disabled, while preserving on-demand manual sync for any page.
+- Page deletion and reordering lifecycle strategies (`pageSyncStrategy`: `'mirror' | 'preserve'`):
+  - `mirror` (default): Automatically purges OneNote pages when removed from reMarkable tablet, and renames OneNote page titles via fast-path JSON `PATCH` commands when pages are reordered without stroke modifications.
+  - `preserve`: Keeps OneNote append-only/static without deletions, resolves colliding page numbers with incremental count suffixes (`Page X (1)`, `Page X (2)`), and records `originalPageNumber` on `PageRecord`.
+- Lightweight OneNote page rename capability (`OneNoteClient.renamePage`): updates page titles via Microsoft Graph JSON `PATCH /pages/{id}/content` (`[{ target: "title", action: "replace", content: newTitle }]`) with retry and 404 handling.
+- Non-colliding page title resolver (`resolveNonCollidingPageTitle`) for suffixing duplicate titles in preserve mode.
+- Lifecycle strategy selection control in Settings view (`SettingsView.tsx`) with user-facing documentation of mirror vs preserve behaviors.
 
 ### Fixed
 - Vertical (portrait) PDF ink alignment: generalized physical 226 DPI himetric scaling factor (`2540 / 226`) and centered page bounding box (`-pageHalfWidth` to `+pageHalfWidth`, `yMin: 0`) across all annotated PDF pages, resolving horizontal ink shift when annotating vertical/portrait PDFs in OneNote.

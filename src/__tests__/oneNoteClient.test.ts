@@ -408,5 +408,59 @@ describe('Phase 6: Microsoft Graph OneNote Client, Throttling, and Directory Cac
     expect(cappedPages).toHaveLength(150);
     expect(requestedUrls).toHaveLength(2);
   });
+
+  it('renames OneNote page title via JSON PATCH command and handles retries or 404', async () => {
+    const recordedRequests: Array<{ url: string; method: string; body: string; headers: Headers }> = [];
+
+    let attempt = 0;
+    const mockFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      const body = typeof init?.body === 'string' ? init.body : '';
+      const headers = new Headers(init?.headers);
+      recordedRequests.push({ url, method, body, headers });
+
+      if (url.includes('/pages/page-rename-404/content')) {
+        return new Response('Not Found', { status: 404 });
+      }
+
+      if (url.includes('/pages/page-rename-retry/content')) {
+        attempt += 1;
+        if (attempt === 1) {
+          return new Response('Too Many Requests', {
+            status: 429,
+            headers: { 'Retry-After': '0' },
+          });
+        }
+        return new Response(null, { status: 204 });
+      }
+
+      if (url.includes('/pages/page-rename-ok/content')) {
+        return new Response(null, { status: 204 });
+      }
+
+      return new Response('Not Found', { status: 404 });
+    });
+
+    const client = new OneNoteClient({ fetchImpl: mockFetch });
+
+    // Successful rename
+    const okResult = await client.renamePage('page-rename-ok', 'Page 3');
+    expect(okResult).toBe(true);
+    expect(recordedRequests[0].method).toBe('PATCH');
+    expect(recordedRequests[0].headers.get('Content-Type')).toBe('application/json');
+    expect(JSON.parse(recordedRequests[0].body)).toEqual([
+      { target: 'title', action: 'replace', content: 'Page 3' },
+    ]);
+
+    // Retryable 429 rename
+    const retryResult = await client.renamePage('page-rename-retry', 'Page 4');
+    expect(retryResult).toBe(true);
+    expect(attempt).toBe(2);
+
+    // 404 rename returns false
+    const notFoundResult = await client.renamePage('page-rename-404', 'Page 5');
+    expect(notFoundResult).toBe(false);
+  });
 });
 

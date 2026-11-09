@@ -6,6 +6,8 @@ export const MIN_CONTAINER_WIDTH_PX = 760;
 export const MAX_CONTAINER_WIDTH_PX = 2400;
 export const DEFAULT_CONTAINER_WIDTH_PX = 1280;
 
+export type PageSyncStrategy = 'mirror' | 'preserve';
+
 export interface UserPreferences {
   /** Autonomous background alarm period in minutes (`>= 1`). */
   syncIntervalMinutes: number;
@@ -31,6 +33,12 @@ export interface UserPreferences {
    * Default false (only upload pages with ink strokes).
    */
   syncUnannotatedPdfPages: boolean;
+  /**
+   * Strategy for handling deletions and page reordering on reMarkable:
+   * - 'mirror': Automatically delete OneNote pages when deleted on tablet, and rename OneNote page titles when reordered.
+   * - 'preserve': Keep OneNote static/append-only; never delete OneNote pages and append (1), (2) on page title conflicts.
+   */
+  pageSyncStrategy: PageSyncStrategy;
 }
 
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
@@ -43,6 +51,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   containerWidthPx: DEFAULT_CONTAINER_WIDTH_PX,
   maxSectionPagesQueryLimit: 300,
   syncUnannotatedPdfPages: false,
+  pageSyncStrategy: 'mirror',
 };
 
 export interface SyncWhitelist {
@@ -116,6 +125,8 @@ function normalizePreferences(raw: Partial<UserPreferences> | undefined): UserPr
       typeof raw.syncUnannotatedPdfPages === 'boolean'
         ? raw.syncUnannotatedPdfPages
         : DEFAULT_USER_PREFERENCES.syncUnannotatedPdfPages,
+    pageSyncStrategy:
+      raw.pageSyncStrategy === 'preserve' ? 'preserve' : 'mirror',
   };
 }
 

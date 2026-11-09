@@ -13,6 +13,7 @@ export interface UpdatePageStatusOptions {
   oneNotePageId?: string | null;
   oneNotePageUrl?: string | null;
   syncedAtIso?: string;
+  titleRenameOnly?: boolean;
 }
 
 /**
@@ -151,6 +152,10 @@ export async function updatePageStatus(
       oneNotePageUrl:
         options.oneNotePageUrl !== undefined ? options.oneNotePageUrl : existing.oneNotePageUrl,
       retryCount: status === 'Failed' ? existing.retryCount + 1 : existing.retryCount,
+      titleRenameOnly:
+        options.titleRenameOnly !== undefined
+          ? options.titleRenameOnly
+          : existing.titleRenameOnly,
     };
 
     await database.pages.put(updated);

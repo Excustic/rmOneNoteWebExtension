@@ -47,6 +47,24 @@ function buildPageKey(documentId: string, pageId: string): string {
   return `${documentId}:${pageId}`;
 }
 
+/**
+ * Resolves a collision-free OneNote page title for 'preserve' mode by suffixing
+ * with `(1)`, `(2)`, etc. when the base title already exists in the section.
+ */
+export function resolveNonCollidingPageTitle(
+  baseTitle: string,
+  existingTitles: ReadonlySet<string>,
+): string {
+  if (!existingTitles.has(baseTitle)) {
+    return baseTitle;
+  }
+  let index = 1;
+  while (existingTitles.has(`${baseTitle} (${index})`)) {
+    index += 1;
+  }
+  return `${baseTitle} (${index})`;
+}
+
 export function isSyncCycleRunning(): boolean {
   return activeDefaultSyncCycle !== null;
 }
@@ -321,6 +339,45 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
     getPendingPages(1000, database),
   ]);
 
+  const oneNoteClient =
+    options.oneNoteClient ??
+    new OneNoteClient({
+      fetchImpl,
+      maxConcurrentRequests: Math.max(1, concurrency),
+      phantomLinkPollDelaysMs: options.phantomLinkPollDelaysMs,
+    });
+
+  const directoryCache =
+    options.directoryCache ?? new OneNoteDirectoryCache(oneNoteClient, database);
+
+  // Pre-warm notebook & section cache in a single Graph call (non-fatal if it fails).
+  await directoryCache.primeFromGraph();
+
+  // Reconcile deleted pages according to the active lifecycle strategy
+  if (prefs.pageSyncStrategy === 'mirror') {
+    const deletedPages = await getPagesByStatus('Deleted', database);
+    if (deletedPages.length > 0) {
+      await onPhaseChange?.(
+        'Uploading',
+        `Purging ${deletedPages.length} deleted pages from OneNote...`,
+      );
+      for (const delPage of deletedPages) {
+        if (delPage.oneNotePageId) {
+          const deleted = await oneNoteClient.deletePage(delPage.oneNotePageId);
+          if (deleted) {
+            await database.pages.delete([delPage.documentId, delPage.pageId]);
+          } else {
+            console.warn(
+              `[SyncEngine] Could not delete OneNote page ${delPage.oneNotePageId} for deleted tablet page.`,
+            );
+          }
+        } else {
+          await database.pages.delete([delPage.documentId, delPage.pageId]);
+        }
+      }
+    }
+  }
+
   if (pendingPagesRaw.length === 0) {
     await onPhaseChange?.('Idle');
     return {
@@ -481,20 +538,6 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
     }
   };
 
-  const oneNoteClient =
-    options.oneNoteClient ??
-    new OneNoteClient({
-      fetchImpl,
-      maxConcurrentRequests: Math.max(1, concurrency),
-      phantomLinkPollDelaysMs: options.phantomLinkPollDelaysMs,
-    });
-
-  const directoryCache =
-    options.directoryCache ?? new OneNoteDirectoryCache(oneNoteClient, database);
-
-  // Pre-warm notebook & section cache in a single Graph call (non-fatal if it fails).
-  await directoryCache.primeFromGraph();
-
   // Cache existing pages per target OneNote section so we only call `listPages(sectionId)`
   // once per section during a sync batch, guarded by a KeyedMutex.
   const sectionPagesMap = new Map<string, OneNotePage[]>();
@@ -535,7 +578,7 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
         (p) =>
           p.id !== uploadedPage.id &&
           !replacedSet.has(p.id) &&
-          p.title !== uploadedPage.title,
+          (prefs.pageSyncStrategy === 'preserve' || p.title !== uploadedPage.title),
       );
       filtered.push(uploadedPage);
       sectionPagesMap.set(sectionId, filtered);
@@ -603,14 +646,58 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
     }
 
     try {
-      // Phase A: Queued -> Converting (.rm download + native TypeScript SceneTree -> InkML/HTML)
-      await updatePageStatus(page.documentId, page.pageId, 'Converting', {}, database);
-      await onPhaseChange?.('Converting', `Converting ${page.virtualPath}`);
-
       const targetPath = parseVirtualPathToOneNoteTarget(
         page.virtualPath,
         prefs.targetSection,
       );
+
+      // Fast-path: When a page was reordered on tablet without stroke modifications,
+      // rename the OneNote page title directly via lightweight JSON PATCH.
+      if (page.titleRenameOnly && page.oneNotePageId && prefs.pageSyncStrategy === 'mirror') {
+        await updatePageStatus(page.documentId, page.pageId, 'Uploading', {}, database);
+        await onPhaseChange?.('Uploading', `Renaming ${page.virtualPath}`);
+
+        const renamed = await oneNoteClient.renamePage(page.oneNotePageId, targetPath.pageTitle);
+        if (renamed) {
+          const resolvedTarget = await directoryCache.resolveTargetNotebookAndSection(
+            targetPath.notebookName,
+            targetPath.sectionName,
+          );
+          await upsertSectionPageInMemory(
+            resolvedTarget.sectionId,
+            { id: page.oneNotePageId, title: targetPath.pageTitle },
+          );
+
+          const syncedAtMs = Date.now();
+          const syncedAtIso = new Date(syncedAtMs).toISOString();
+          await updatePageStatus(
+            page.documentId,
+            page.pageId,
+            'Uploaded',
+            {
+              titleRenameOnly: false,
+              syncedAtIso,
+              lastError: null,
+            },
+            database,
+          );
+
+          return {
+            documentId: page.documentId,
+            pageId: page.pageId,
+            virtualPath: page.virtualPath,
+            status: 'Uploaded',
+            oneNotePageId: page.oneNotePageId,
+            oneNotePageUrl: page.oneNotePageUrl,
+            error: null,
+          };
+        }
+        // If rename failed (e.g. 404 in OneNote), fall through to normal full re-upload.
+      }
+
+      // Phase A: Queued -> Converting (.rm download + native TypeScript SceneTree -> InkML/HTML)
+      await updatePageStatus(page.documentId, page.pageId, 'Converting', {}, database);
+      await onPhaseChange?.('Converting', `Converting ${page.virtualPath}`);
 
       const hasRmBlob = Boolean(page.contentHash && page.fileSizeBytes > 0);
       const [rmBytes, backgroundPdf] = await Promise.all([
@@ -659,10 +746,21 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
       await onPhaseChange?.('Uploading', `Uploading ${page.virtualPath}`);
 
       const existingSectionPages = await getSectionPagesCached(resolvedTarget.sectionId);
+
+      let effectiveTitle = targetPath.pageTitle;
+      if (prefs.pageSyncStrategy === 'preserve') {
+        const otherExistingTitles = new Set(
+          existingSectionPages
+            .filter((candidate) => candidate.id !== page.oneNotePageId)
+            .map((candidate) => candidate.title),
+        );
+        effectiveTitle = resolveNonCollidingPageTitle(targetPath.pageTitle, otherExistingTitles);
+      }
+
       const matchingExistingList = existingSectionPages.filter(
         (candidate) =>
           (page.oneNotePageId !== null && candidate.id === page.oneNotePageId) ||
-          candidate.title === targetPath.pageTitle,
+          candidate.title === effectiveTitle,
       );
 
       // Graph only ingests `presentation-onenote-inkml` on page creation.
@@ -672,15 +770,18 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
       // Deleting last means a failed upload never loses the existing page.
       const uploadedPageId = await oneNoteClient.uploadInkMlPage({
         sectionId: resolvedTarget.sectionId,
-        title: targetPath.pageTitle,
+        title: effectiveTitle,
         presentationHtml: converted.presentationHtml,
         inkmlXml: converted.inkmlXml,
         backgroundPdfBytes,
       });
 
-      const stalePageIdsToDelete = matchingExistingList
-        .map((candidate) => candidate.id)
-        .filter((id) => id !== uploadedPageId);
+      const stalePageIdsToDelete =
+        prefs.pageSyncStrategy === 'mirror'
+          ? matchingExistingList
+              .map((candidate) => candidate.id)
+              .filter((id) => id !== uploadedPageId)
+          : [];
 
       for (const staleId of stalePageIdsToDelete) {
         const deleted = await oneNoteClient.deletePage(staleId);
@@ -694,7 +795,7 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
 
       await upsertSectionPageInMemory(
         resolvedTarget.sectionId,
-        { id: uploadedPageId, title: targetPath.pageTitle },
+        { id: uploadedPageId, title: effectiveTitle },
         stalePageIdsToDelete,
       );
 
@@ -724,6 +825,7 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
           oneNotePageUrl: verified.oneNoteUrl,
           syncedAtIso,
           lastError: null,
+          titleRenameOnly: false,
         },
         database,
       );
