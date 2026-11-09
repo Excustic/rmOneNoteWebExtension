@@ -761,8 +761,12 @@ function parseLegacyV3OrV5SceneTree(stream: RmDataStream, version: 3 | 5): Scene
 
 /**
  * Parses a reMarkable `.rm` binary file (v6, v5, or v3) into a `SceneTree`.
+ * Returns an empty SceneTree for zero-length byte buffers (unannotated pages).
  */
 export function parseRmSceneTree(bytes: Uint8Array): SceneTree {
+  if (bytes.byteLength === 0) {
+    return new SceneTree(6);
+  }
   const probe = new RmDataStream(bytes);
   const version = probe.readHeaderVersion();
   if (version === 6) {

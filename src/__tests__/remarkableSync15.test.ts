@@ -22,7 +22,7 @@ import {
   syncRemarkableCloudTree,
   toggleNodeSelection,
 } from '../remarkable';
-import { getWhitelist, setWhitelist } from '../storage/preferences';
+import { getWhitelist, setWhitelist, updatePreferences } from '../storage/preferences';
 import { recordSyncedPagesInLedger, reconcileSyncLedgerToDexie } from '../storage/syncLedger';
 import { resetMockBrowserStorage } from './setup';
 
@@ -228,6 +228,13 @@ describe('Sync15 index and metadata parsers', () => {
     const resolved = resolveDocumentRmPages(DOC_CALCULUS_ID, docEntries, pdfContentJson);
     expect(resolved).toEqual([
       {
+        pageId: 'unannotated-p1',
+        pageNumber: '1',
+        title: 'Page 1',
+        rmBlobHash: '',
+        fileSizeBytes: 0,
+      },
+      {
         pageId: PAGE_2_ID,
         pageNumber: '2',
         title: 'Page 2',
@@ -278,6 +285,15 @@ describe('Sync15 index and metadata parsers', () => {
     expect(
       resolveDocumentRmPages(DOC_CALCULUS_ID, pdfWithRedirEntries, pdfWithRedirContentJson),
     ).toEqual([
+      {
+        pageId: 'unannotated-p1',
+        pageNumber: '1',
+        title: 'Page 1',
+        rmBlobHash: '',
+        fileSizeBytes: 0,
+        pdfBlobHash: 'h_pdf_blob',
+        pdfPageIndex: 0,
+      },
       {
         pageId: PAGE_1_ID,
         pageNumber: '2',
@@ -608,6 +624,71 @@ describe('syncRemarkableCloudTree, delta updates, and in-memory .rm extraction',
     expect(hydratedPage?.status).toBe('Uploaded');
     expect(hydratedPage?.contentHash).toBe('rm_p1');
     expect(hydratedPage?.virtualPath).toBe('Calculus 1/Page 1');
+  });
+
+  it('indexes all document pages including unannotated blank pages, marking blank pages Skipped when syncUnannotatedPdfPages is false', async () => {
+    const BLANK_PAGE_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const server = createMockSync15Server({
+      hash: 'root',
+      generation: 1,
+      blobs: {
+        root: ['4', '0:.:1:1000', `calc_entry:0:${DOC_CALCULUS_ID}:0:500`].join('\n'),
+        calc_entry: [
+          '4',
+          '0:.:3:3000',
+          `meta_calc:0:${DOC_CALCULUS_ID}.metadata:0:100`,
+          `content_calc:0:${DOC_CALCULUS_ID}.content:0:200`,
+          `rm_p1:0:${DOC_CALCULUS_ID}/${PAGE_1_ID}.rm:0:1024`,
+        ].join('\n'),
+        meta_calc: JSON.stringify({
+          visibleName: 'Calculus 1',
+          type: 'DocumentType',
+          parent: '',
+          lastModified: '1730900100000',
+        }),
+        content_calc: JSON.stringify({
+          cPages: {
+            pages: [
+              { id: PAGE_1_ID, idx: { value: 'aa' } },
+              { id: BLANK_PAGE_ID, idx: { value: 'ab' } },
+            ],
+          },
+        }),
+        rm_p1: new Uint8Array([1, 2, 3]),
+      },
+    });
+
+    await setWhitelist({ syncFiles: [DOC_CALCULUS_ID], syncFolders: [] });
+    await updatePreferences({ syncUnannotatedPdfPages: false });
+
+    await syncRemarkableCloudTree({
+      database: testDb,
+      fetchImpl: server.fetchImpl,
+    });
+
+    const page1 = await testDb.pages.get([DOC_CALCULUS_ID, PAGE_1_ID]);
+    const page2 = await testDb.pages.get([DOC_CALCULUS_ID, BLANK_PAGE_ID]);
+
+    // Page 1 has strokes -> Pending
+    expect(page1?.status).toBe('Pending');
+    expect(page1?.fileSizeBytes).toBe(1024);
+    expect(page1?.pageNumber).toBe('1');
+
+    // Page 2 is blank (no .rm file) -> Indexed, but Skipped from auto-sync
+    expect(page2?.status).toBe('Skipped');
+    expect(page2?.fileSizeBytes).toBe(0);
+    expect(page2?.contentHash).toBe('');
+    expect(page2?.pageNumber).toBe('2');
+    expect(page2?.title).toBe('Page 2');
+
+    // When syncUnannotatedPdfPages is toggled true, reconcile flips page 2 to Pending
+    await updatePreferences({ syncUnannotatedPdfPages: true });
+    await syncRemarkableCloudTree({
+      database: testDb,
+      fetchImpl: server.fetchImpl,
+    });
+    const page2Updated = await testDb.pages.get([DOC_CALCULUS_ID, BLANK_PAGE_ID]);
+    expect(page2Updated?.status).toBe('Pending');
   });
 });
 

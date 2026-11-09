@@ -1308,7 +1308,10 @@ export function SyncControlView({
                                 {page.lastSyncTime
                                   ? `Last synced: ${formatSyncTimestamp(page.lastSyncTime)}`
                                   : `Modified: ${formatSyncTimestamp(page.lastModified)}`}{' '}
-                                | {formatFileSize(page.fileSizeBytes)}
+                                |{' '}
+                                {page.fileSizeBytes === 0
+                                  ? '0 KB (Blank / No strokes)'
+                                  : formatFileSize(page.fileSizeBytes)}
                               </p>
 
                               {page.lastError ? (

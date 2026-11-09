@@ -244,6 +244,7 @@ async function fetchSingleDocumentBundle(
 
 async function reconcileWhitelistStatusesInDb(
   effectiveDocIdsLower: ReadonlySet<string>,
+  syncUnannotatedPdfPages: boolean,
   database: RmOneNoteDatabase,
 ): Promise<number> {
   return database.transaction('rw', database.pages, async () => {
@@ -252,9 +253,12 @@ async function reconcileWhitelistStatusesInDb(
 
     for (const page of allPages) {
       const isWhitelisted = effectiveDocIdsLower.has(page.documentId.toLowerCase());
-      if (isWhitelisted && page.status === 'Skipped') {
+      const isBlank = page.fileSizeBytes === 0;
+      const canAutoSync = isWhitelisted && (!isBlank || syncUnannotatedPdfPages);
+
+      if (canAutoSync && page.status === 'Skipped') {
         updates.push({ ...page, status: 'Pending' });
-      } else if (!isWhitelisted && page.status === 'Pending') {
+      } else if (!canAutoSync && page.status === 'Pending') {
         updates.push({ ...page, status: 'Skipped' });
       }
     }
@@ -339,7 +343,11 @@ async function executeCloudTreeSync(
         syncFolders: whitelist.syncFolders,
       });
     }
-    await reconcileWhitelistStatusesInDb(effectiveDocIdsLower, database);
+    await reconcileWhitelistStatusesInDb(
+      effectiveDocIdsLower,
+      prefs.syncUnannotatedPdfPages,
+      database,
+    );
 
     return buildSyncResultFromDb(
       rootPointer.hash,
@@ -530,6 +538,10 @@ async function executeCloudTreeSync(
         const pdfBlobHash = resolvedPage.pdfBlobHash ?? null;
         const pdfPageIndex = resolvedPage.pdfPageIndex ?? null;
 
+        const isBlankPage = resolvedPage.fileSizeBytes === 0;
+        const canAutoSync =
+          isDocWhitelisted && (!isBlankPage || prefs.syncUnannotatedPdfPages);
+
         if (!existingPage) {
           pagesToPut.push({
             documentId: docId,
@@ -540,7 +552,7 @@ async function executeCloudTreeSync(
             fileSizeBytes: resolvedPage.fileSizeBytes,
             lastModified: doc.lastModified,
             contentHash: resolvedPage.rmBlobHash,
-            status: isDocWhitelisted ? 'Pending' : 'Skipped',
+            status: canAutoSync ? 'Pending' : 'Skipped',
             lastSyncTime: null,
             oneNotePageId: null,
             oneNotePageUrl: null,
@@ -568,7 +580,7 @@ async function executeCloudTreeSync(
             contentHash: resolvedPage.rmBlobHash,
             status: isUnmodifiedLedgerStub
               ? 'Uploaded'
-              : isDocWhitelisted
+              : canAutoSync
                 ? 'Pending'
                 : 'Skipped',
             retryCount: isUnmodifiedLedgerStub ? existingPage.retryCount : 0,
@@ -578,9 +590,9 @@ async function executeCloudTreeSync(
           });
         } else {
           let nextStatus = existingPage.status;
-          if (isDocWhitelisted && (nextStatus === 'Skipped' || nextStatus === 'Deleted')) {
+          if (canAutoSync && (nextStatus === 'Skipped' || nextStatus === 'Deleted')) {
             nextStatus = 'Pending';
-          } else if (!isDocWhitelisted && nextStatus === 'Pending') {
+          } else if (!canAutoSync && nextStatus === 'Pending') {
             nextStatus = 'Skipped';
           }
 
@@ -732,6 +744,7 @@ export async function saveWhitelistAndReconcilePages(
 
   const updatedPagesCount = await reconcileWhitelistStatusesInDb(
     effectiveDocIdsLower,
+    prefs.syncUnannotatedPdfPages,
     database,
   );
   const pendingPagesCount = await database.pages.where('status').equals('Pending').count();

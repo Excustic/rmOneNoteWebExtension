@@ -612,11 +612,14 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
         prefs.targetSection,
       );
 
+      const hasRmBlob = Boolean(page.contentHash && page.fileSizeBytes > 0);
       const [rmBytes, backgroundPdf] = await Promise.all([
-        downloadPageRmBytes(page.documentId, page.pageId, {
-          knownBlobHash: page.contentHash || undefined,
-          fetchImpl,
-        }),
+        hasRmBlob
+          ? downloadPageRmBytes(page.documentId, page.pageId, {
+              knownBlobHash: page.contentHash || undefined,
+              fetchImpl,
+            })
+          : Promise.resolve(new Uint8Array(0)),
         resolvePageBackgroundPdf(page),
       ]);
 

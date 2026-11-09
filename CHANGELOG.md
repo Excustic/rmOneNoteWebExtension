@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Paginated OneNote section page listing (`OneNoteClient.listPages`): queries in batches of up to 100 (`$top=100`) and follows `@odata.nextLink` until the section is exhausted or a configurable ceiling is reached.
 - New `maxSectionPagesQueryLimit` setting (default: 300, range: 20 – 1000) and `syncUnannotatedPdfPages` toggle (default: false) in `UserPreferences` and `SettingsView.tsx` with pragmatic documentation.
 - Bulk duplicate purging in `syncEngine.ts`: finds and deletes all matching stale pages in a section upon re-sync instead of only the first match.
+- Full document page indexing (Option B) in `metadataParser.ts`: resolves all pages declared in `cPages.pages` or PDF page maps, including unannotated pages (`0 KB (Blank / No strokes)`), ensuring complete document visibility in Sync Control.
+- Selective unannotated page auto-sync: background sync automatically skips blank pages when `syncUnannotatedPdfPages` is disabled, while preserving on-demand manual sync for any page.
 
 ### Fixed
 - Vertical (portrait) PDF ink alignment: generalized physical 226 DPI himetric scaling factor (`2540 / 226`) and centered page bounding box (`-pageHalfWidth` to `+pageHalfWidth`, `yMin: 0`) across all annotated PDF pages, resolving horizontal ink shift when annotating vertical/portrait PDFs in OneNote.

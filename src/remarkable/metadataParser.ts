@@ -214,13 +214,13 @@ export function resolveDocumentRmPages(
     }
   }
 
-  if (rmEntriesByPageId.size === 0) {
-    return [];
-  }
-
   const { hasExplicitPageList, orderedPageIds, pdfPageIndices } = rawContentJson
     ? parseContentPageList(rawContentJson)
     : { hasExplicitPageList: false, orderedPageIds: [], pdfPageIndices: [] };
+
+  if (!hasExplicitPageList && rmEntriesByPageId.size === 0) {
+    return [];
+  }
 
   const resolved: ResolvedRemarkablePage[] = [];
   const seenPageIds = new Set<string>();
@@ -233,10 +233,6 @@ export function resolveDocumentRmPages(
     seenPageIds.add(pageId);
 
     const rmEntry = rmEntriesByPageId.get(pageId);
-    if (!rmEntry) {
-      continue;
-    }
-
     const pageNumber = String(i + 1);
     const pdfPageIndex =
       pdfBlobHash !== null ? (pdfPageIndices[i] !== undefined ? pdfPageIndices[i] : i) : null;
@@ -244,8 +240,8 @@ export function resolveDocumentRmPages(
       pageId,
       pageNumber,
       title: `Page ${pageNumber}`,
-      rmBlobHash: rmEntry.hash,
-      fileSizeBytes: rmEntry.size,
+      rmBlobHash: rmEntry ? rmEntry.hash : '',
+      fileSizeBytes: rmEntry ? rmEntry.size : 0,
       ...(pdfBlobHash !== null
         ? {
             pdfBlobHash,
