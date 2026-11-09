@@ -20,7 +20,11 @@ import {
   type RuntimeResponse,
   type SyncOverviewState,
 } from '../shared/messaging';
-import { ensureDefaultPreferences } from '../storage/preferences';
+import {
+  ensureDefaultPreferences,
+  getCloudStorageUpdatedAt,
+  isLocalStorageOnly,
+} from '../storage/preferences';
 import {
   getBackupImportWarningStatus,
   reconcileSyncLedgerToDexie,
@@ -78,12 +82,15 @@ void _exhaustiveRequestTypesCheck;
 const VALID_REQUEST_TYPES = new Set<string>(VALID_REQUEST_TYPES_LIST);
 
 async function readSyncOverview(): Promise<SyncOverviewState> {
-  const [storedResult, indexedPagesCount, warning, auth] = await Promise.all([
-    ext.storage.local.get(OVERVIEW_STORAGE_KEY),
-    getIndexedPageCount(),
-    getBackupImportWarningStatus(),
-    getAuthStatusSummary(),
-  ]);
+  const [storedResult, indexedPagesCount, warning, auth, localOnly, cloudUpdatedAt] =
+    await Promise.all([
+      ext.storage.local.get(OVERVIEW_STORAGE_KEY),
+      getIndexedPageCount(),
+      getBackupImportWarningStatus(),
+      getAuthStatusSummary(),
+      isLocalStorageOnly(),
+      getCloudStorageUpdatedAt(),
+    ]);
 
   const stored = storedResult[OVERVIEW_STORAGE_KEY] as
     | Partial<PersistedOverviewFields>
@@ -99,6 +106,8 @@ async function readSyncOverview(): Promise<SyncOverviewState> {
     indexedPagesCount,
     needsBackupImport: warning.needsBackupImport,
     missingHistoryCount: warning.missingHistoryCount,
+    localStorageOnly: localOnly,
+    cloudStorageUpdatedAt: cloudUpdatedAt,
   };
 }
 

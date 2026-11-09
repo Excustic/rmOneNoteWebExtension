@@ -367,7 +367,7 @@ export function DashboardView({
         </div>
       ) : null}
 
-      <div data-tour="dashboard-overview-cards" className="grid gap-4 sm:grid-cols-3">
+      <div data-tour="dashboard-overview-cards" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
@@ -450,6 +450,39 @@ export function DashboardView({
           <p className="mt-1 text-xs text-slate-500">
             {overallCounts.pending} pending | {overallCounts.failed} failed
           </p>
+        </article>
+
+        <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+              Profile Storage
+            </h2>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${overview.localStorageOnly
+                ? 'border border-slate-300 bg-slate-100 text-slate-700'
+                : 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                }`}
+            >
+              {overview.localStorageOnly ? 'Local Only' : 'Cloud Synced'}
+            </span>
+          </div>
+          <p className="mt-2 text-xl font-semibold text-slate-900">
+            {overview.localStorageOnly ? 'Local Device' : 'Browser Cloud'}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {overview.localStorageOnly
+              ? 'Cloud sync disabled for privacy.'
+              : overview.cloudStorageUpdatedAt
+                ? `Last cloud sync: ${formatSyncTimestamp(overview.cloudStorageUpdatedAt)}`
+                : 'No cloud sync recorded yet.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => onNavigate('settings')}
+            className="mt-2 inline-block text-xs font-medium text-brand underline underline-offset-2 hover:text-brand-hover"
+          >
+            Configure in Settings
+          </button>
         </article>
       </div>
 

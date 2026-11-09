@@ -273,3 +273,7 @@ export function getRawSyncStoreSnapshot(): Map<string, unknown> {
   return new Map(syncArea._rawStore);
 }
 
+export function getRawLocalStoreSnapshot(): Map<string, unknown> {
+  return new Map(localArea._rawStore);
+}
+

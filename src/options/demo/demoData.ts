@@ -291,6 +291,8 @@ export const DEMO_OVERVIEW: SyncOverviewState = {
   indexedPagesCount: 9,
   needsBackupImport: false,
   missingHistoryCount: 0,
+  localStorageOnly: false,
+  cloudStorageUpdatedAt: TWO_HOURS_AGO,
 };
 
 export const DEMO_PREFERENCES: UserPreferences = {

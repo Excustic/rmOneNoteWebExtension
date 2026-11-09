@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.0] - 2026-11-09
 
 ### Added
+- Local-only storage opt-out mode in Settings (`SettingsView.tsx`, `src/storage/preferences.ts`): provides privacy-conscious users an option to store all extension preferences, whitelist selections, and rolling sync ledger records strictly on the local machine (`chrome.storage.local`), disabling browser vendor account profile cloud sync (`chrome.storage.sync`). Includes bidirectional automatic data migration and wiping from cloud storage upon activation.
+- Browser profile cloud storage monitoring in Dashboard (`DashboardView.tsx`) and Settings: dedicated overview card displaying live profile storage status (`Local Only` vs `Cloud Synced`), human-readable timestamp of the last write to browser account cloud storage, and privacy indicators.
 - Per-section page creation queue mutex (`sectionPagesMutex` in `syncEngine.ts`): enforces strict ascending chronological creation order on Microsoft Graph so pages are created in natural order (`Page 1`, `Page 2`, `Page 3`) without race conditions caused by smaller pages finishing faster than larger pages, while keeping single-page and distinct-notebook sync non-blocking.
 - Configurable concurrent upload workers (`syncConcurrency`: range 1 to 5, default 3) in `UserPreferences` and `SettingsView.tsx`. Setting to 1 processes page conversion and upload workers strictly sequentially.
 - Dedicated deleted pages inspection and recovery workflow in Sync Control (`SyncControlView.tsx`):

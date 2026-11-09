@@ -73,6 +73,83 @@ export interface SyncWhitelist {
 const PREFS_KEY = 'prefs';
 const FILES_PREFIX = 'wl_files';
 const FOLDERS_PREFIX = 'wl_folders';
+export const LOCAL_STORAGE_ONLY_KEY = 'storage_local_only';
+export const CLOUD_STORAGE_UPDATED_AT_KEY = 'cloud_storage_updated_at';
+
+/**
+ * Checks whether user has opted out of browser account profile cloud storage (`chrome.storage.sync`),
+ * storing all preferences, whitelist, and sync records strictly in `chrome.storage.local`.
+ */
+export async function isLocalStorageOnly(): Promise<boolean> {
+  const stored = await ext.storage.local.get(LOCAL_STORAGE_ONLY_KEY);
+  return Boolean(stored[LOCAL_STORAGE_ONLY_KEY]);
+}
+
+/**
+ * Retrieves the timestamp when browser profile cloud storage (`chrome.storage.sync`) was last written.
+ */
+export async function getCloudStorageUpdatedAt(): Promise<string | null> {
+  const stored = await ext.storage.local.get(CLOUD_STORAGE_UPDATED_AT_KEY);
+  return typeof stored[CLOUD_STORAGE_UPDATED_AT_KEY] === 'string'
+    ? stored[CLOUD_STORAGE_UPDATED_AT_KEY]
+    : null;
+}
+
+/**
+ * Records the timestamp of a successful write to `chrome.storage.sync`.
+ */
+export async function updateCloudStorageUpdatedAt(timestamp?: string): Promise<string> {
+  const ts = timestamp ?? new Date().toISOString();
+  await ext.storage.local.set({ [CLOUD_STORAGE_UPDATED_AT_KEY]: ts });
+  return ts;
+}
+
+/**
+ * Returns the active storage area (`storage.local` if local-only mode is active, `storage.sync` otherwise).
+ */
+export async function resolveStorageArea(): Promise<Storage.StorageArea> {
+  const localOnly = await isLocalStorageOnly();
+  return localOnly ? ext.storage.local : ext.storage.sync;
+}
+
+/**
+ * Toggles local-only storage mode and migrates existing preferences, whitelist, and sync ledger
+ * between storage areas to ensure zero data loss.
+ */
+export async function setLocalStorageOnly(toLocalOnly: boolean): Promise<void> {
+  const currentLocalOnly = await isLocalStorageOnly();
+  if (currentLocalOnly === toLocalOnly) {
+    return;
+  }
+
+  const fromArea = toLocalOnly ? ext.storage.sync : ext.storage.local;
+  const toArea = toLocalOnly ? ext.storage.local : ext.storage.sync;
+
+  const allFrom = await fromArea.get(null);
+  const keysToCopy = Object.keys(allFrom).filter(
+    (key) =>
+      key === PREFS_KEY ||
+      key.startsWith(FILES_PREFIX) ||
+      key.startsWith(FOLDERS_PREFIX) ||
+      key === 'sl_meta' ||
+      key.startsWith('sl_'),
+  );
+
+  if (keysToCopy.length > 0) {
+    const toSet: Record<string, unknown> = {};
+    for (const key of keysToCopy) {
+      toSet[key] = allFrom[key];
+    }
+    await toArea.set(toSet);
+    await fromArea.remove(keysToCopy);
+  }
+
+  await ext.storage.local.set({ [LOCAL_STORAGE_ONLY_KEY]: toLocalOnly });
+
+  if (!toLocalOnly) {
+    await updateCloudStorageUpdatedAt();
+  }
+}
 
 /**
  * 320 packed 22-char Base64url UUIDs = 7,040 bytes per key, safely below the
@@ -146,31 +223,41 @@ function normalizePreferences(raw: Partial<UserPreferences> | undefined): UserPr
 }
 
 export async function getPreferences(): Promise<UserPreferences> {
-  const stored = await ext.storage.sync.get(PREFS_KEY);
+  const area = await resolveStorageArea();
+  const stored = await area.get(PREFS_KEY);
   return normalizePreferences(stored[PREFS_KEY] as Partial<UserPreferences> | undefined);
 }
 
 export async function updatePreferences(
   patch: Partial<UserPreferences>,
 ): Promise<UserPreferences> {
+  const area = await resolveStorageArea();
   const current = await getPreferences();
   const next = normalizePreferences({ ...current, ...patch });
-  await ext.storage.sync.set({ [PREFS_KEY]: next });
+  await area.set({ [PREFS_KEY]: next });
+  if (area === ext.storage.sync) {
+    await updateCloudStorageUpdatedAt();
+  }
   return next;
 }
 
 export async function ensureDefaultPreferences(): Promise<UserPreferences> {
-  const stored = await ext.storage.sync.get(PREFS_KEY);
+  const area = await resolveStorageArea();
+  const stored = await area.get(PREFS_KEY);
   if (stored[PREFS_KEY] !== undefined) {
     return normalizePreferences(stored[PREFS_KEY] as Partial<UserPreferences>);
   }
-  await ext.storage.sync.set({ [PREFS_KEY]: DEFAULT_USER_PREFERENCES });
+  await area.set({ [PREFS_KEY]: DEFAULT_USER_PREFERENCES });
+  if (area === ext.storage.sync) {
+    await updateCloudStorageUpdatedAt();
+  }
   return { ...DEFAULT_USER_PREFERENCES };
 }
 
 async function readChunkedUuidList(prefix: string): Promise<string[]> {
+  const area = await resolveStorageArea();
   const countKey = `${prefix}_n`;
-  const countResult = await ext.storage.sync.get(countKey);
+  const countResult = await area.get(countKey);
   const chunkCount = countResult[countKey];
 
   if (typeof chunkCount !== 'number' || chunkCount <= 0) {
@@ -178,7 +265,7 @@ async function readChunkedUuidList(prefix: string): Promise<string[]> {
   }
 
   const chunkKeys = Array.from({ length: chunkCount }, (_, i) => `${prefix}_${i}`);
-  const chunksObj = await ext.storage.sync.get(chunkKeys);
+  const chunksObj = await area.get(chunkKeys);
 
   const ids: string[] = [];
   for (const key of chunkKeys) {
@@ -228,7 +315,8 @@ export async function getWhitelist(): Promise<SyncWhitelist> {
 }
 
 export async function setWhitelist(whitelist: SyncWhitelist): Promise<SyncWhitelist> {
-  const prevCounts = await ext.storage.sync.get([`${FILES_PREFIX}_n`, `${FOLDERS_PREFIX}_n`]);
+  const area = await resolveStorageArea();
+  const prevCounts = await area.get([`${FILES_PREFIX}_n`, `${FOLDERS_PREFIX}_n`]);
   const prevFilesCount =
     typeof prevCounts[`${FILES_PREFIX}_n`] === 'number'
       ? (prevCounts[`${FILES_PREFIX}_n`] as number)
@@ -245,14 +333,18 @@ export async function setWhitelist(whitelist: SyncWhitelist): Promise<SyncWhitel
     prevFoldersCount,
   );
 
-  await ext.storage.sync.set({
+  await area.set({
     ...filesPlan.toSet,
     ...foldersPlan.toSet,
   });
 
   const staleKeys = [...filesPlan.toRemove, ...foldersPlan.toRemove];
   if (staleKeys.length > 0) {
-    await ext.storage.sync.remove(staleKeys);
+    await area.remove(staleKeys);
+  }
+
+  if (area === ext.storage.sync) {
+    await updateCloudStorageUpdatedAt();
   }
 
   return getWhitelist();
@@ -264,6 +356,19 @@ export function onSyncStorageChanged(
   const handler = (changes: Record<string, Storage.StorageChange>, areaName: string) => {
     if (areaName === 'sync') {
       listener(changes);
+      return;
+    }
+    if (areaName === 'local') {
+      const hasRelevantKey = Object.keys(changes).some(
+        (k) =>
+          k === PREFS_KEY ||
+          k.startsWith(FILES_PREFIX) ||
+          k.startsWith(FOLDERS_PREFIX) ||
+          k === LOCAL_STORAGE_ONLY_KEY,
+      );
+      if (hasRelevantKey) {
+        listener(changes);
+      }
     }
   };
   ext.storage.onChanged.addListener(handler);

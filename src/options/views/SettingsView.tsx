@@ -4,12 +4,15 @@ import type { SyncOverviewState } from '../../shared/messaging';
 import {
   DEFAULT_CONTAINER_WIDTH_PX,
   DEFAULT_USER_PREFERENCES,
+  isLocalStorageOnly,
   MAX_CONTAINER_WIDTH_PX,
   MIN_CONTAINER_WIDTH_PX,
   onSyncStorageChanged,
+  setLocalStorageOnly,
   type UserPreferences,
 } from '../../storage/preferences';
 import { importBackupAndReconcile } from '../../storage/syncLedger';
+import { formatSyncTimestamp } from '../components/SyncStatusIcon';
 import { useDataSource } from '../context/DataSourceContext';
 
 interface SettingsViewProps {
@@ -42,6 +45,40 @@ export function SettingsView({
     text: string;
   } | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [localStorageOnly, setLocalStorageOnlyState] = useState<boolean>(overview.localStorageOnly);
+  const [isMigratingStorage, setIsMigratingStorage] = useState(false);
+  const [storageFeedback, setStorageFeedback] = useState<{
+    isError: boolean;
+    text: string;
+  } | null>(null);
+
+  useEffect(() => {
+    void isLocalStorageOnly().then((val) => setLocalStorageOnlyState(val));
+  }, []);
+
+  async function handleToggleLocalStorageOnly(e: ChangeEvent<HTMLInputElement>) {
+    const nextVal = e.target.checked;
+    setIsMigratingStorage(true);
+    setStorageFeedback(null);
+    try {
+      await setLocalStorageOnly(nextVal);
+      setLocalStorageOnlyState(nextVal);
+      onBackupStateChanged();
+      setStorageFeedback({
+        isError: false,
+        text: nextVal
+          ? 'Local-only storage active. Settings and history will remain strictly on this device.'
+          : 'Browser cloud sync active. Settings and history will sync across your browser profile.',
+      });
+    } catch (err) {
+      setStorageFeedback({
+        isError: true,
+        text: err instanceof Error ? err.message : 'Failed to update storage mode.',
+      });
+    } finally {
+      setIsMigratingStorage(false);
+    }
+  }
 
   useEffect(() => {
     if (typeof containerWidthPx === 'number') {
@@ -490,6 +527,66 @@ export function SettingsView({
             </p>
           </div>
         </form>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-2xs">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-900">
+            Browser Profile Cloud Storage &amp; Privacy
+          </h2>
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${localStorageOnly
+              ? 'border border-slate-300 bg-slate-100 text-slate-700'
+              : 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+              }`}
+          >
+            {localStorageOnly ? 'Local Device Only' : 'Cloud Synced'}
+          </span>
+        </div>
+
+        <p className="mt-1 text-sm text-slate-600">
+          By default, extension preferences, notebook selection whitelist, and rolling sync history are
+          synchronized across your devices using your browser account profile cloud (Google Chrome Sync or Firefox Sync).
+        </p>
+
+        <div className="mt-4 flex items-start gap-3">
+          <input
+            id="local-storage-only-toggle"
+            name="localStorageOnly"
+            type="checkbox"
+            checked={localStorageOnly}
+            disabled={isMigratingStorage}
+            onChange={(e) => void handleToggleLocalStorageOnly(e)}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 accent-brand"
+          />
+          <div>
+            <label
+              htmlFor="local-storage-only-toggle"
+              className="cursor-pointer text-sm font-medium text-slate-900"
+            >
+              Local-only storage mode (Opt out of browser profile cloud sync)
+            </label>
+            <p className="text-xs text-slate-500">
+              When enabled, your preferences and sync records are stored strictly on this machine (storage.local).
+              No settings or sync data will be sent to browser vendor account servers.
+            </p>
+            {!localStorageOnly && overview.cloudStorageUpdatedAt ? (
+              <p className="mt-1 text-xs text-slate-400">
+                Last browser cloud sync: {formatSyncTimestamp(overview.cloudStorageUpdatedAt)}
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        {storageFeedback ? (
+          <p
+            role="status"
+            className={`mt-3 text-xs font-medium ${storageFeedback.isError ? 'text-red-700' : 'text-emerald-700'
+              }`}
+          >
+            {storageFeedback.text}
+          </p>
+        ) : null}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-2xs">

@@ -3,6 +3,11 @@ import { db, type RmOneNoteDatabase } from '../db/db';
 import type { PageRecord } from '../db/models';
 import { ext } from '../shared/browser';
 import {
+  isLocalStorageOnly,
+  resolveStorageArea,
+  updateCloudStorageUpdatedAt,
+} from './preferences';
+import {
   packSyncLedgerRecords,
   type SyncLedgerEntry,
   unpackSyncLedgerRecords,
@@ -69,7 +74,8 @@ export interface SyncLedgerSnapshot {
 }
 
 export async function readSyncLedgerSnapshot(): Promise<SyncLedgerSnapshot> {
-  const metaObj = await ext.storage.sync.get(LEDGER_META_KEY);
+  const area = await resolveStorageArea();
+  const metaObj = await area.get(LEDGER_META_KEY);
   const rawMeta = metaObj[LEDGER_META_KEY] as Partial<SyncLedgerMetadata> | undefined;
 
   const meta: SyncLedgerMetadata = {
@@ -86,7 +92,7 @@ export async function readSyncLedgerSnapshot(): Promise<SyncLedgerSnapshot> {
     { length: meta.chunkCount },
     (_, idx) => `${LEDGER_CHUNK_PREFIX}${idx}`,
   );
-  const chunkValues = await ext.storage.sync.get(chunkKeys);
+  const chunkValues = await area.get(chunkKeys);
 
   const entries: SyncLedgerEntry[] = [];
   for (const key of chunkKeys) {
@@ -167,9 +173,13 @@ export async function recordSyncedPagesInLedger(
     toRemove.push(`${LEDGER_CHUNK_PREFIX}${i}`);
   }
 
-  await ext.storage.sync.set(toSet);
+  const area = await resolveStorageArea();
+  await area.set(toSet);
   if (toRemove.length > 0) {
-    await ext.storage.sync.remove(toRemove);
+    await area.remove(toRemove);
+  }
+  if (area === ext.storage.sync) {
+    await updateCloudStorageUpdatedAt();
   }
 
   // Update local tracking sequence so this PC recognizes its own flush.
@@ -228,9 +238,13 @@ export async function removeSyncedPagesFromLedger(
     toRemove.push(`${LEDGER_CHUNK_PREFIX}${i}`);
   }
 
-  await ext.storage.sync.set(toSet);
+  const area = await resolveStorageArea();
+  await area.set(toSet);
   if (toRemove.length > 0) {
-    await ext.storage.sync.remove(toRemove);
+    await area.remove(toRemove);
+  }
+  if (area === ext.storage.sync) {
+    await updateCloudStorageUpdatedAt();
   }
 
   const localState = await readLocalTrackingState();
@@ -404,8 +418,10 @@ export async function importBackupAndReconcile(
  * incoming `storage.sync` ledger updates into local `Dexie.pages`.
  */
 export function registerSyncLedgerAutoReconcile(database: RmOneNoteDatabase = db): () => void {
-  const listener = (changes: Record<string, unknown>, areaName: string) => {
-    if (areaName !== 'sync') {
+  const listener = async (changes: Record<string, unknown>, areaName: string) => {
+    const localOnly = await isLocalStorageOnly();
+    const expectedArea = localOnly ? 'local' : 'sync';
+    if (areaName !== expectedArea) {
       return;
     }
     const touchedLedger = Object.keys(changes).some(isLedgerChunkKey);

@@ -20,6 +20,8 @@ export interface SyncOverviewState {
   indexedPagesCount: number;
   needsBackupImport: boolean;
   missingHistoryCount: number;
+  localStorageOnly: boolean;
+  cloudStorageUpdatedAt: string | null;
 }
 
 export const DEFAULT_SYNC_OVERVIEW: SyncOverviewState = {
@@ -33,6 +35,8 @@ export const DEFAULT_SYNC_OVERVIEW: SyncOverviewState = {
   indexedPagesCount: 0,
   needsBackupImport: false,
   missingHistoryCount: 0,
+  localStorageOnly: false,
+  cloudStorageUpdatedAt: null,
 };
 
 export type RuntimeRequest =

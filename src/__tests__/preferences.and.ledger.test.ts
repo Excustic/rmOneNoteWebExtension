@@ -5,20 +5,24 @@ import {
   DEFAULT_USER_PREFERENCES,
   dismissBackupImportWarning,
   getBackupImportWarningStatus,
+  getCloudStorageUpdatedAt,
   getPreferences,
   getWhitelist,
   importBackupAndReconcile,
+  isLocalStorageOnly,
   MAX_LEDGER_ENTRIES,
   readSyncLedgerSnapshot,
   recordSyncedPagesInLedger,
   reconcileSyncLedgerToDexie,
   registerSyncLedgerAutoReconcile,
   removeSyncedPagesFromLedger,
+  setLocalStorageOnly,
   type SyncLedgerEntry,
   setWhitelist,
   updatePreferences,
 } from '../storage';
 import {
+  getRawLocalStoreSnapshot,
   getRawSyncStoreSnapshot,
   resetMockBrowserStorage,
   resetMockLocalStorageOnly,
@@ -272,6 +276,73 @@ describe('UserPreferences, chunked Whitelists, and Cross-PC Rolling Sync Ledger'
     } finally {
       unsubscribe();
     }
+  });
+
+  it('toggles local-only storage mode, migrates keys bidirectionally, and manages cloud sync timestamp', async () => {
+    // 1. Initial state: defaults to false and no cloud sync timestamp yet
+    expect(await isLocalStorageOnly()).toBe(false);
+    expect(await getCloudStorageUpdatedAt()).toBeNull();
+
+    // 2. Writing preferences or whitelist updates cloudStorageUpdatedAt in local storage, while storing data in storage.sync
+    await updatePreferences({ targetSection: 'Cloud Section' });
+    const cloudTs1 = await getCloudStorageUpdatedAt();
+    expect(cloudTs1).toBeTruthy();
+    expect(new Date(cloudTs1!).getTime()).toBeGreaterThan(0);
+
+    const docId = makeUuid(77, 1);
+    await setWhitelist({ syncFiles: [docId], syncFolders: [] });
+    await recordSyncedPagesInLedger([
+      { documentId: docId, pageId: makeUuid(77, 2), syncedAtUnixSec: 1_763_000_100 },
+    ]);
+
+    const syncRawBefore = getRawSyncStoreSnapshot();
+    expect(syncRawBefore.has('prefs')).toBe(true);
+    expect(syncRawBefore.has('wl_files_0')).toBe(true);
+    expect(syncRawBefore.has('sl_meta')).toBe(true);
+
+    // 3. Switch to local-only storage:
+    // Migrates prefs, whitelist, and sync ledger from storage.sync to storage.local,
+    // and clears them from storage.sync.
+    await setLocalStorageOnly(true);
+    expect(await isLocalStorageOnly()).toBe(true);
+
+    const syncRawAfterMigrate = getRawSyncStoreSnapshot();
+    expect(syncRawAfterMigrate.has('prefs')).toBe(false);
+    expect(syncRawAfterMigrate.has('wl_files_0')).toBe(false);
+    expect(syncRawAfterMigrate.has('sl_meta')).toBe(false);
+
+    const localRaw = getRawLocalStoreSnapshot();
+    expect(localRaw.has('prefs')).toBe(true);
+    expect(localRaw.has('wl_files_0')).toBe(true);
+    expect(localRaw.has('sl_meta')).toBe(true);
+
+    // Verify preferences and whitelist read accurately from storage.local
+    const localPrefs = await getPreferences();
+    expect(localPrefs.targetSection).toBe('Cloud Section');
+    const localWhitelist = await getWhitelist();
+    expect(localWhitelist.syncFiles).toEqual([docId]);
+
+    // In local-only mode, writes should NOT update cloud storage or its timestamp
+    const cloudTsBeforeLocalWrite = await getCloudStorageUpdatedAt();
+    await updatePreferences({ targetSection: 'Strictly Local Section' });
+    const cloudTsAfterLocalWrite = await getCloudStorageUpdatedAt();
+    expect(cloudTsAfterLocalWrite).toBe(cloudTsBeforeLocalWrite);
+
+    // storage.sync remains untouched
+    expect(getRawSyncStoreSnapshot().has('prefs')).toBe(false);
+
+    // 4. Switch back to cloud-synced mode (setLocalStorageOnly(false)):
+    // Migrates from storage.local back to storage.sync and refreshes cloudStorageUpdatedAt.
+    await setLocalStorageOnly(false);
+    expect(await isLocalStorageOnly()).toBe(false);
+
+    const syncRawRestored = getRawSyncStoreSnapshot();
+    expect(syncRawRestored.has('prefs')).toBe(true);
+    expect((await getPreferences()).targetSection).toBe('Strictly Local Section');
+    expect((await getWhitelist()).syncFiles).toEqual([docId]);
+
+    const restoredCloudTs = await getCloudStorageUpdatedAt();
+    expect(restoredCloudTs).toBeTruthy();
   });
 });
 
