@@ -617,7 +617,38 @@ export function DashboardView({
                             : `Status: ${page.status}`
                         }
                       >
-                        <SyncStatusBadge status={page.status} />
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <SyncStatusBadge status={page.status} />
+
+                          {page.originalPageNumber &&
+                          page.originalPageNumber !== page.pageNumber ? (
+                            <span
+                              className="inline-flex items-center rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800"
+                              title={`Page was reordered on tablet: was Page ${page.originalPageNumber}, now Page ${page.pageNumber}`}
+                            >
+                              Moved: Page {page.originalPageNumber} &rarr; Page {page.pageNumber}
+                            </span>
+                          ) : null}
+
+                          {page.status === 'Deleted' ? (
+                            <span
+                              className="inline-flex items-center rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-800"
+                              title="This page was deleted on your reMarkable tablet"
+                            >
+                              Deleted on tablet
+                            </span>
+                          ) : null}
+
+                          {page.lastSyncTime &&
+                          Date.parse(page.lastModified) > Date.parse(page.lastSyncTime) + 1000 ? (
+                            <span
+                              className="inline-flex items-center rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
+                              title="This page was modified on your reMarkable tablet after the last upload to OneNote"
+                            >
+                              Out of date
+                            </span>
+                          ) : null}
+                        </div>
                         {page.lastError ? (
                           <p
                             className="mt-1 truncate text-[11px] text-rose-600"

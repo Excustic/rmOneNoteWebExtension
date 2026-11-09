@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { saveRemarkableAuth } from '../auth/authStore';
 import { RmOneNoteDatabase } from '../db/db';
-import { deriveOneNoteNotebookName } from '../db/models';
+import { deriveOneNoteNotebookName, type PageRecord } from '../db/models';
+import { computeRollupForPages } from '../options/views/SyncControlView';
 import {
   buildFileTreeHierarchy,
   deriveInitialSelectionMap,
@@ -832,5 +833,65 @@ describe('Tri-state FileTree selection helpers', () => {
       totalDocuments: 2,
       selectedDocuments: 1,
     });
+  });
+
+  it('computes document rollup and detects out-of-date status when modified after OneNote sync', () => {
+    const basePage: PageRecord = {
+      documentId: 'doc-1',
+      pageId: 'page-1',
+      pageNumber: '1',
+      title: 'Page 1',
+      virtualPath: 'Doc/Page 1',
+      fileSizeBytes: 100,
+      lastModified: '2026-11-09T12:00:00.000Z',
+      contentHash: 'hash-1',
+      status: 'Uploaded',
+      lastSyncTime: '2026-11-09T12:05:00.000Z',
+      oneNotePageId: 'on-1',
+      oneNotePageUrl: 'https://onenote/page-1',
+      retryCount: 0,
+      lastError: null,
+    };
+
+    // 1. Synced and up to date
+    const rollupSynced = computeRollupForPages(
+      [basePage],
+      'https://onenote/nb-1',
+      '2026-11-09T12:00:00.000Z',
+    );
+    expect(rollupSynced.isOutOfDate).toBe(false);
+    expect(rollupSynced.visualState).toBe('uploaded');
+
+    // 2. Document modified on tablet after last sync time
+    const rollupDocModified = computeRollupForPages(
+      [basePage],
+      'https://onenote/nb-1',
+      '2026-11-09T14:00:00.000Z',
+    );
+    expect(rollupDocModified.isOutOfDate).toBe(true);
+
+    // 3. Page modified on tablet after its sync time
+    const rollupPageModified = computeRollupForPages(
+      [{ ...basePage, lastModified: '2026-11-09T15:00:00.000Z' }],
+      'https://onenote/nb-1',
+      '2026-11-09T12:00:00.000Z',
+    );
+    expect(rollupPageModified.isOutOfDate).toBe(true);
+
+    // 4. Page is Pending after a previous upload
+    const rollupPagePending = computeRollupForPages(
+      [{ ...basePage, status: 'Pending' }],
+      'https://onenote/nb-1',
+      '2026-11-09T12:00:00.000Z',
+    );
+    expect(rollupPagePending.isOutOfDate).toBe(true);
+
+    // 5. Never synced document
+    const rollupNeverSynced = computeRollupForPages(
+      [{ ...basePage, lastSyncTime: null, status: 'Pending' }],
+      null,
+      '2026-11-09T12:00:00.000Z',
+    );
+    expect(rollupNeverSynced.isOutOfDate).toBe(false);
   });
 });

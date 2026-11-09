@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Lightweight OneNote page rename capability (`OneNoteClient.renamePage`): updates page titles via Microsoft Graph JSON `PATCH /pages/{id}/content` (`[{ target: "title", action: "replace", content: newTitle }]`) with retry and 404 handling.
 - Non-colliding page title resolver (`resolveNonCollidingPageTitle`) for suffixing duplicate titles in preserve mode.
 - Lifecycle strategy selection control in Settings view (`SettingsView.tsx`) with user-facing documentation of mirror vs preserve behaviors.
+- Visual cues for document and page lifecycle statuses across Sync Control tree, pages inspector, and Dashboard table:
+  - `Out of date` badge displayed on documents and individual pages whenever modified on the tablet after their last OneNote sync time.
+  - `Moved: Page X -> Page Y` badge displaying original versus reordered tablet page positions.
+  - `Deleted on tablet` badge marking pages removed on the tablet while preserved in OneNote.
 
 ### Fixed
 - Vertical (portrait) PDF ink alignment: generalized physical 226 DPI himetric scaling factor (`2540 / 226`) and centered page bounding box (`-pageHalfWidth` to `+pageHalfWidth`, `yMin: 0`) across all annotated PDF pages, resolving horizontal ink shift when annotating vertical/portrait PDFs in OneNote.

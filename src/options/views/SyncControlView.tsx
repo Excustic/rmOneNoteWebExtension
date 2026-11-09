@@ -44,6 +44,7 @@ interface NodeSyncRollup {
   pendingPages: number;
   failedPages: number;
   activePages: number;
+  isOutOfDate: boolean;
 }
 
 const EMPTY_ROLLUP: NodeSyncRollup = {
@@ -55,6 +56,7 @@ const EMPTY_ROLLUP: NodeSyncRollup = {
   pendingPages: 0,
   failedPages: 0,
   activePages: 0,
+  isOutOfDate: false,
 };
 
 const REMARKABLE_HOST_ORIGINS = [
@@ -113,9 +115,10 @@ function collectSubtreeDocumentIds(
   return selectedDocIds.length > 0 ? selectedDocIds : allDocIds;
 }
 
-function computeRollupForPages(
+export function computeRollupForPages(
   pages: readonly PageRecord[],
   docOneNoteUrl?: string | null,
+  docLastModified?: string | null,
 ): NodeSyncRollup {
   if (pages.length === 0) {
     return {
@@ -131,6 +134,7 @@ function computeRollupForPages(
   let latestSyncMs = 0;
   let lastSyncedAt: string | null = null;
   let latestOneNoteUrl: string | null = docOneNoteUrl ?? null;
+  let anyPageOutOfDate = false;
 
   for (const page of pages) {
     const vState = mapPageStatusToVisualState(page.status);
@@ -153,11 +157,27 @@ function computeRollupForPages(
           latestOneNoteUrl = page.oneNotePageUrl;
         }
       }
+
+      const modMs = Date.parse(page.lastModified);
+      if (!Number.isNaN(modMs) && modMs > ms + 1000) {
+        anyPageOutOfDate = true;
+      }
     }
     if (!latestOneNoteUrl && page.oneNotePageUrl) {
       latestOneNoteUrl = page.oneNotePageUrl;
     }
   }
+
+  const isDocModifiedAfterSync = Boolean(
+    lastSyncedAt &&
+      docLastModified &&
+      Date.parse(docLastModified) > Date.parse(lastSyncedAt) + 1000,
+  );
+
+  const isOutOfDate = Boolean(
+    (lastSyncedAt !== null && (isDocModifiedAfterSync || anyPageOutOfDate)) ||
+      (lastSyncedAt !== null && pendingPages > 0),
+  );
 
   let visualState: VisualSyncState = 'idle';
   if (activePages > 0) {
@@ -179,6 +199,7 @@ function computeRollupForPages(
     pendingPages,
     failedPages,
     activePages,
+    isOutOfDate,
   };
 }
 
@@ -193,7 +214,10 @@ function buildRollupMap(
     if (node.type !== 'CollectionType') {
       const docPages = pagesByDocId.get(node.id) ?? [];
       const docMeta = docsById.get(node.id);
-      map.set(node.id, computeRollupForPages(docPages, docMeta?.oneNoteNotebookUrl));
+      map.set(
+        node.id,
+        computeRollupForPages(docPages, docMeta?.oneNoteNotebookUrl, docMeta?.lastModified),
+      );
       return docPages;
     }
 
@@ -201,7 +225,7 @@ function buildRollupMap(
     for (const child of node.children) {
       combined.push(...collectFolderPages(child));
     }
-    map.set(node.id, computeRollupForPages(combined, null));
+    map.set(node.id, computeRollupForPages(combined, null, null));
     return combined;
   };
 
@@ -409,6 +433,15 @@ function TreeNodeRow({
             {!isFolder && rollup.totalPages > 0 ? (
               <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">
                 {rollup.totalPages} {rollup.totalPages === 1 ? 'page' : 'pages'}
+              </span>
+            ) : null}
+
+            {!isFolder && rollup.isOutOfDate ? (
+              <span
+                className="shrink-0 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
+                title="Document was modified on your reMarkable tablet after the last upload to OneNote"
+              >
+                Out of date
               </span>
             ) : null}
           </button>
@@ -1206,6 +1239,14 @@ export function SyncControlView({
                         {inspectedDocNode.visibleName}
                       </h2>
                       <SyncStatusIcon state={inspectedDocRollup.visualState} />
+                      {inspectedDocRollup.isOutOfDate ? (
+                        <span
+                          className="shrink-0 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800"
+                          title="This document was modified on your reMarkable tablet after the last upload to OneNote"
+                        >
+                          Out of date
+                        </span>
+                      ) : null}
                     </div>
                     <p
                       className="mt-1 truncate text-xs text-slate-500"
@@ -1302,6 +1343,35 @@ export function SyncControlView({
                                   Page {page.pageNumber}
                                 </label>
                                 <SyncStatusBadge status={page.status} />
+
+                                {page.originalPageNumber &&
+                                page.originalPageNumber !== page.pageNumber ? (
+                                  <span
+                                    className="inline-flex items-center rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800"
+                                    title={`Page was reordered on tablet: was Page ${page.originalPageNumber}, now Page ${page.pageNumber}`}
+                                  >
+                                    Moved: Page {page.originalPageNumber} &rarr; Page {page.pageNumber}
+                                  </span>
+                                ) : null}
+
+                                {page.status === 'Deleted' ? (
+                                  <span
+                                    className="inline-flex items-center rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-800"
+                                    title="This page was deleted on your reMarkable tablet"
+                                  >
+                                    Deleted on tablet
+                                  </span>
+                                ) : null}
+
+                                {page.lastSyncTime &&
+                                Date.parse(page.lastModified) > Date.parse(page.lastSyncTime) + 1000 ? (
+                                  <span
+                                    className="inline-flex items-center rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
+                                    title="This page was modified on your reMarkable tablet after the last upload to OneNote"
+                                  >
+                                    Out of date
+                                  </span>
+                                ) : null}
                               </div>
 
                               <p className="mt-1 text-[11px] text-slate-500">
