@@ -1200,18 +1200,10 @@ export async function recoverDeletedPage(
     database,
   );
 
-  await recordSyncedPagesInLedger([
-    {
-      documentId,
-      pageId,
-      syncedAtUnixSec: Math.floor(syncedAtMs / 1000),
-    },
-  ]);
-
-    return {
-      ok: true,
-      oneNoteUrl: verified.oneNoteUrl,
-    };
+  return {
+    ok: true,
+    oneNoteUrl: verified.oneNoteUrl,
+  };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     console.error(`[rmOneNote] Failed to recover deleted page ${documentId}/${pageId}:`, err);

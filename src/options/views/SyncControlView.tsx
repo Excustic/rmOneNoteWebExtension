@@ -1581,7 +1581,9 @@ export function SyncControlView({
                                         <span className="text-xs font-semibold text-slate-700">
                                           Page {page.pageNumber}{revSuffix}
                                         </span>
-                                        <SyncStatusBadge status="Deleted" />
+                                        {page.oneNotePageId ? null : (
+                                          <SyncStatusBadge status="Deleted" />
+                                        )}
                                         <span
                                           className="inline-flex items-center rounded border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-800"
                                           title="This page was deleted on your reMarkable tablet"

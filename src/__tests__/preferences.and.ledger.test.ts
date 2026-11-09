@@ -141,6 +141,13 @@ describe('UserPreferences, chunked Whitelists, and Cross-PC Rolling Sync Ledger'
       new Date((1_762_000_000 + 39) * 1000).toISOString(),
     );
 
+    // Verify deleted page status is preserved when ledger reconciliation runs
+    const deletedPageId = makeUuid(20, 50);
+    await pc2Db.pages.update([docId, deletedPageId], { status: 'Deleted' });
+    await reconcileSyncLedgerToDexie(pc2Db);
+    const preservedPage = await getPage(docId, deletedPageId, pc2Db);
+    expect(preservedPage?.status).toBe('Deleted');
+
     // Remove entries from ledger (e.g. when pages are purged in mirror mode)
     const afterRemoveMeta = await removeSyncedPagesFromLedger([batch[0], batch[1]]);
     expect(afterRemoveMeta.totalSeq).toBe(251);

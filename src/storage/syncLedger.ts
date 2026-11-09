@@ -302,7 +302,7 @@ export async function reconcileSyncLedgerToDexie(
         if (incomingSyncMs > existingSyncMs) {
           toPut.push({
             ...existing,
-            status: 'Uploaded',
+            status: existing.status === 'Deleted' ? 'Deleted' : 'Uploaded',
             lastSyncTime: incomingIso,
             lastModified:
               incomingIso > existing.lastModified ? incomingIso : existing.lastModified,

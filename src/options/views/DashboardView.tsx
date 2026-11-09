@@ -618,7 +618,9 @@ export function DashboardView({
                         }
                       >
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <SyncStatusBadge status={page.status} />
+                          {page.status === 'Deleted' && page.oneNotePageId ? null : (
+                            <SyncStatusBadge status={page.status} />
+                          )}
 
                           {page.originalPageNumber &&
                           page.originalPageNumber !== page.pageNumber ? (

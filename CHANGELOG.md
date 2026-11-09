@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Deleted on tablet` badge marking pages removed on the tablet while preserved in OneNote.
 
 ### Fixed
+- Recovered page containment and status tags:
+  - When a deleted page was recovered, `recordSyncedPagesInLedger` triggered cross-PC ledger reconciliation, which unconditionally overwrote the page's status in IndexedDB from `'Deleted'` to `'Uploaded'`, moving it out of `Deleted Pages` back into the active pages list of the original notebook.
+  - Updated `reconcileSyncLedgerToDexie` in `src/storage/syncLedger.ts` to preserve `status: 'Deleted'`, and removed ledger registration from `recoverDeletedPage` so tablet-deleted pages permanently stay confined to the `Deleted Pages` list.
+  - Updated `SyncControlView.tsx` and `DashboardView.tsx` to omit the redundant grey `Deleted` badge once a page has been recovered to OneNote (`oneNotePageId !== null`), retaining only the red `Deleted on tablet` badge and the "Open in OneNote" direct link.
 - Recover button silent message drop in background router:
   - The runtime background message router (`isRuntimeRequest` in `src/background/index.ts`) verified incoming messages against a `VALID_REQUEST_TYPES` set. `'RECOVER_DELETED_PAGE'` was omitted from this set, causing the background script to synchronously drop the message without invoking `recoverDeletedPage` and returning `undefined` to `SyncControlView.tsx`, triggering an immediate generic "Failed to recover deleted page" error.
   - Added `'RECOVER_DELETED_PAGE'` to the background router with a compile-time exhaustiveness check (`_exhaustiveRequestTypesCheck`) ensuring every `RuntimeRequest['type']` union variant must be present in the router list.
