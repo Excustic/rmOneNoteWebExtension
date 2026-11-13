@@ -321,6 +321,7 @@ export const DEMO_OVERVIEW: SyncOverviewState = {
   microsoftAccount: 'demo.student@university.edu',
   phase: 'Idle',
   lastSyncedAt: TWO_HOURS_AGO,
+  nextAutoSyncAt: new Date(Date.now() + 4 * 60_000 + 32_000).toISOString(),
   lastError: null,
   indexedPagesCount: 11,
   needsBackupImport: false,

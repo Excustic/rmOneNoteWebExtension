@@ -179,6 +179,41 @@
   }
 }
 
+/* Pure CSS geometric clock outline for the next automatic sync countdown. */
+.countdown-icon-clock {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 0.875rem;
+  block-size: 0.875rem;
+  border-radius: 9999px;
+  border: 1.5px solid currentColor;
+  flex-shrink: 0;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inline-size: 1.5px;
+    block-size: 0.25rem;
+    background-color: currentColor;
+    border-radius: 1px;
+    inset-block-start: 0.14rem;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    inline-size: 0.22rem;
+    block-size: 1.5px;
+    background-color: currentColor;
+    border-radius: 1px;
+    inset-inline-start: 50%;
+    inset-block-start: 50%;
+    transform: translateY(-50%);
+  }
+}
+
 .status-spin {
   @media (prefers-reduced-motion: no-preference) {
     animation: spin 1s linear infinite;

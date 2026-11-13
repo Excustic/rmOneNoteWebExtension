@@ -150,10 +150,13 @@ export function OptionsApp() {
 
     ext.storage.onChanged.addListener(onStorageChange);
     const unsubscribeSync = onSyncStorageChanged((changes) => {
-      if ('prefs' in changes && !dragStateRef.current) {
-        void getPreferences().then((prefs) => {
-          setContainerWidthPx(prefs.containerWidthPx);
-        });
+      if ('prefs' in changes) {
+        if (!dragStateRef.current) {
+          void getPreferences().then((prefs) => {
+            setContainerWidthPx(prefs.containerWidthPx);
+          });
+        }
+        void refreshOverview();
       }
     });
 

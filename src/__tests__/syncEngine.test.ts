@@ -6,10 +6,12 @@ import { RmOneNoteDatabase } from '../db/db';
 import { getDocument, getPage, savePage } from '../db/repository';
 import { REMARKABLE_SYNC_FILES_URL, REMARKABLE_SYNC_ROOT_URL } from '../remarkable';
 import { ext } from '../shared/browser';
+import { formatCountdownMmSs } from '../shared/components/NextSyncCountdown';
 import { setWhitelist, updatePreferences } from '../storage/preferences';
 import {
   AUTO_SYNC_ALARM_NAME,
   cancelSyncItem,
+  getNextAutoSyncAt,
   queueManualSyncItems,
   recoverDeletedPage,
   registerAutoSyncAlarmListeners,
@@ -1393,5 +1395,34 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
 
     expect((await getPage(DOC_ID, PAGE_1_ID, testDb))?.status).toBe('Pending');
     expect(phases).toEqual([]);
+  });
+
+  it('tracks next auto-sync timestamp and preserves running alarms unless interval changes or forceReset is set', async () => {
+    expect(await getNextAutoSyncAt()).toBeNull();
+
+    await updatePreferences({ autoSync: true, syncIntervalMinutes: 5 });
+    await syncAutoSyncAlarmWithPreferences();
+
+    const firstScheduled = (await ext.alarms.get(AUTO_SYNC_ALARM_NAME))?.scheduledTime;
+    const firstIso = await getNextAutoSyncAt();
+    expect(firstIso).not.toBeNull();
+    expect(Date.parse(firstIso!)).toBe(firstScheduled);
+
+    // Wait briefly and call again without forceReset; scheduledTime should remain unchanged.
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await updatePreferences({ containerWidthPx: 1100 });
+    await syncAutoSyncAlarmWithPreferences();
+    expect((await ext.alarms.get(AUTO_SYNC_ALARM_NAME))?.scheduledTime).toBe(firstScheduled);
+
+    // Explicitly resetting moves the alarm forward.
+    await syncAutoSyncAlarmWithPreferences(undefined, { forceReset: true });
+    const resetScheduled = (await ext.alarms.get(AUTO_SYNC_ALARM_NAME))?.scheduledTime;
+    expect(resetScheduled).toBeGreaterThanOrEqual(firstScheduled!);
+
+    // Countdown formatting handles boundary and multi-minute intervals cleanly.
+    expect(formatCountdownMmSs(0)).toBe('00:00');
+    expect(formatCountdownMmSs(-250)).toBe('00:00');
+    expect(formatCountdownMmSs(61_200)).toBe('01:02');
+    expect(formatCountdownMmSs(5 * 60_000)).toBe('05:00');
   });
 });

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-11-13
+
+### Added
+- **Next Auto-Sync Countdown Timer (`NextSyncCountdown.tsx`)**: displays a subtle clock icon and live `MM:SS` countdown next to the manual sync button across the Dashboard, Sync Control header, and extension Popup whenever automatic background alarms are active.
+
+### Changed
+- **Alarm Scheduling Preservation (`alarmScheduler.ts`)**: prevents resetting an active periodic sync alarm when saving unrelated preferences (such as panel width), while resetting cleanly when sync intervals change or after a sync cycle finishes.
+- **Browser-Extension Issue Templates**: removed tablet hardware/reMarkable OS fields from `.github/ISSUE_TEMPLATE/bug_report.yml` and converted `compatibility_report.yml` into a Browser & OS Compatibility Report template.
+
 ## [1.2.0] - 2026-11-13
 
 ### Added

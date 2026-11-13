@@ -15,33 +15,25 @@ export function PopupApp() {
   const [isAborting, setIsAborting] = useState(false);
   const [statusAnnouncement, setStatusAnnouncement] = useState('');
 
-  useEffect(() => {
-    let active = true;
+  const loadOverview = useCallback(async () => {
+    try {
+      const response = (await ext.runtime.sendMessage({
+        type: 'GET_SYNC_OVERVIEW',
+      })) as RuntimeResponse | undefined;
 
-    async function loadOverview() {
-      try {
-        const response = (await ext.runtime.sendMessage({
-          type: 'GET_SYNC_OVERVIEW',
-        })) as RuntimeResponse | undefined;
-
-        if (active && response?.ok) {
-          setOverview(response.state);
-        }
-      } catch (err) {
-        console.error('[rmOneNote] Failed to query sync overview:', err);
-      } finally {
-        if (active) {
-          setIsLoaded(true);
-        }
+      if (response?.ok) {
+        setOverview(response.state);
       }
+    } catch (err) {
+      console.error('[rmOneNote] Failed to query sync overview:', err);
+    } finally {
+      setIsLoaded(true);
     }
-
-    void loadOverview();
-
-    return () => {
-      active = false;
-    };
   }, []);
+
+  useEffect(() => {
+    void loadOverview();
+  }, [loadOverview]);
 
   const handleManualSync = useCallback(async () => {
     setIsSyncing(true);
@@ -154,6 +146,7 @@ export function PopupApp() {
             isAborting={isAborting}
             onManualSync={() => void handleManualSync()}
             onAbortSync={() => void handleAbortSync()}
+            onRefreshOverview={() => void loadOverview()}
             onOpenRoute={(route) => void handleOpenRoute(route)}
           />
         ) : (
@@ -170,7 +163,7 @@ export function PopupApp() {
       </div>
 
       <footer className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-2 text-[11px] text-slate-500">
-        <span>v1.2.0</span>
+        <span>v1.2.1</span>
         <button
           type="button"
           onClick={() => void handleOpenRoute('settings')}

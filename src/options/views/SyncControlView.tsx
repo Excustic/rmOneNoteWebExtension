@@ -14,6 +14,7 @@ import {
   toggleNodeSelection,
 } from '../../remarkable';
 import { ext } from '../../shared/browser';
+import { NextSyncCountdown } from '../../shared/components/NextSyncCountdown';
 import { LegacyIcon } from '../../shared/legacyIcons';
 import type { RuntimeResponse, SyncOverviewState } from '../../shared/messaging';
 import {
@@ -1213,6 +1214,13 @@ export function SyncControlView({
               Retry Failed ({totalFailedPagesCount})
             </button>
           ) : null}
+
+          <NextSyncCountdown
+            nextAutoSyncAt={overview.nextAutoSyncAt}
+            isConfigured={overview.isConfigured}
+            isSyncing={isEngineBusy}
+            onCountdownElapsed={() => onSyncStateChanged()}
+          />
 
           <button
             type="button"

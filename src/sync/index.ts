@@ -1,5 +1,6 @@
 export {
   AUTO_SYNC_ALARM_NAME,
+  getNextAutoSyncAt,
   registerAutoSyncAlarmListeners,
   syncAutoSyncAlarmWithPreferences,
 } from './alarmScheduler';

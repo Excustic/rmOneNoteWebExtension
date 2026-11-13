@@ -277,6 +277,12 @@ export function createDemoDataSource(
 
   async function updatePrefs(patch: Partial<UserPreferences>): Promise<UserPreferences> {
     prefs = { ...prefs, ...patch };
+    if ('autoSync' in patch || 'syncIntervalMinutes' in patch) {
+      const nextAutoSyncAt = prefs.autoSync
+        ? new Date(Date.now() + Math.max(1, Math.round(prefs.syncIntervalMinutes)) * 60_000).toISOString()
+        : null;
+      notifyOverview({ ...overview, nextAutoSyncAt });
+    }
     return { ...prefs };
   }
 

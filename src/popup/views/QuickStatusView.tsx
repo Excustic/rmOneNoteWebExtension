@@ -1,3 +1,4 @@
+import { NextSyncCountdown } from '../../shared/components/NextSyncCountdown';
 import type { SyncOverviewState } from '../../shared/messaging';
 
 interface QuickStatusViewProps {
@@ -6,6 +7,7 @@ interface QuickStatusViewProps {
   isAborting?: boolean;
   onManualSync: () => void;
   onAbortSync: () => void;
+  onRefreshOverview?: () => void;
   onOpenRoute: (route: string) => void;
 }
 
@@ -28,6 +30,7 @@ export function QuickStatusView({
   isAborting = false,
   onManualSync,
   onAbortSync,
+  onRefreshOverview,
   onOpenRoute,
 }: QuickStatusViewProps) {
   return (
@@ -64,14 +67,23 @@ export function QuickStatusView({
       </div>
 
       <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          disabled={isSyncing}
-          onClick={onManualSync}
-          className="min-h-9 w-full rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isSyncing ? 'Syncing...' : 'Sync Now'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={isSyncing}
+            onClick={onManualSync}
+            className="min-h-9 flex-1 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSyncing ? 'Syncing...' : 'Sync Now'}
+          </button>
+          <NextSyncCountdown
+            nextAutoSyncAt={overview.nextAutoSyncAt}
+            isConfigured={overview.isConfigured}
+            isSyncing={isSyncing}
+            onCountdownElapsed={onRefreshOverview}
+            className="shrink-0 px-1"
+          />
+        </div>
 
         {isSyncing ? (
           <button

@@ -16,6 +16,7 @@ export interface SyncOverviewState {
   microsoftAccount: string | null;
   phase: SyncPhase;
   lastSyncedAt: string | null;
+  nextAutoSyncAt: string | null;
   lastError: string | null;
   indexedPagesCount: number;
   needsBackupImport: boolean;
@@ -31,6 +32,7 @@ export const DEFAULT_SYNC_OVERVIEW: SyncOverviewState = {
   microsoftAccount: null,
   phase: 'Idle',
   lastSyncedAt: null,
+  nextAutoSyncAt: null,
   lastError: null,
   indexedPagesCount: 0,
   needsBackupImport: false,

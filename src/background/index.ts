@@ -25,6 +25,7 @@ import {
 import {
   ensureDefaultPreferences,
   getCloudStorageUpdatedAt,
+  getPreferences,
   isLocalStorageOnly,
 } from '../storage/preferences';
 import {
@@ -35,6 +36,7 @@ import {
 import {
   abortActiveSyncCycle,
   cancelSyncItem,
+  getNextAutoSyncAt,
   isSyncCycleRunning,
   queueManualSyncItems,
   recoverDeletedPage,
@@ -93,7 +95,7 @@ void _exhaustiveRequestTypesCheck;
 const VALID_REQUEST_TYPES = new Set<string>(VALID_REQUEST_TYPES_LIST);
 
 async function readSyncOverview(): Promise<SyncOverviewState> {
-  const [storedResult, indexedPagesCount, warning, auth, localOnly, cloudUpdatedAt] =
+  const [storedResult, indexedPagesCount, warning, auth, localOnly, cloudUpdatedAt, prefs] =
     await Promise.all([
       ext.storage.local.get(OVERVIEW_STORAGE_KEY),
       getIndexedPageCount(),
@@ -101,7 +103,11 @@ async function readSyncOverview(): Promise<SyncOverviewState> {
       getAuthStatusSummary(),
       isLocalStorageOnly(),
       getCloudStorageUpdatedAt(),
+      getPreferences(),
     ]);
+
+  await syncAutoSyncAlarmWithPreferences(prefs);
+  const nextAutoSyncAt = await getNextAutoSyncAt();
 
   const stored = storedResult[OVERVIEW_STORAGE_KEY] as
     | Partial<PersistedOverviewFields>
@@ -133,6 +139,7 @@ async function readSyncOverview(): Promise<SyncOverviewState> {
     missingHistoryCount: warning.missingHistoryCount,
     localStorageOnly: localOnly,
     cloudStorageUpdatedAt: cloudUpdatedAt,
+    nextAutoSyncAt,
   };
 }
 
@@ -179,6 +186,7 @@ async function executeManagedSyncCycle(
       (item) => item.error === 'Sync aborted by user.',
     );
     const firstFailure = summary.outcomes.find((item) => item.status === 'Failed');
+    await syncAutoSyncAlarmWithPreferences(undefined, { forceReset: true });
     const state = await writePersistedOverview({
       phase:
         !wasAborted && summary.failedCount > 0 && summary.uploadedCount === 0

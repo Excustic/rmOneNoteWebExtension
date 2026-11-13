@@ -1,6 +1,6 @@
 {
   "name": "rm-onenote-web-extension",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "description": "Serverless Manifest V3 browser extension for syncing reMarkable notebooks to Microsoft OneNote.",
   "license": "GPL-3.0-or-later",

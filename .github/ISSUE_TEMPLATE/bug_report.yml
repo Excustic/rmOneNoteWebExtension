@@ -12,8 +12,8 @@ body:
     id: extension-version
     attributes:
       label: Extension Version
-      description: What version of the extension are you running? (e.g., v1.2.0)
-      placeholder: v1.2.0
+      description: What version of the extension are you running? (e.g., v1.2.1)
+      placeholder: v1.2.1
     validations:
       required: true
 

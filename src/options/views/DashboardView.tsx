@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useMemo, useState } from 'react';
 import type { PageRecord } from '../../db/models';
+import { NextSyncCountdown } from '../../shared/components/NextSyncCountdown';
 import { LegacyIcon } from '../../shared/legacyIcons';
 import type { RuntimeResponse, SyncOverviewState } from '../../shared/messaging';
 import type { OptionsRouteId } from '../../shared/routes';
@@ -332,6 +333,12 @@ export function DashboardView({
               >
                 Open Sync Control
               </button>
+              <NextSyncCountdown
+                nextAutoSyncAt={overview.nextAutoSyncAt}
+                isConfigured={overview.isConfigured}
+                isSyncing={isEngineBusy}
+                onCountdownElapsed={() => onSyncStateChanged()}
+              />
               <button
                 type="button"
                 data-tour="dashboard-sync-now-btn"
