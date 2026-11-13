@@ -1,17 +1,17 @@
 # reMarkable to OneNote Web Extension
 
-A serverless Manifest V3 browser extension for autonomously synchronizing notebooks, handwritten ink, typed text, and PDF annotations from reMarkable Cloud directly into Microsoft OneNote.
+A serverless Manifest V3 browser extension for autonomously **one-way** synchronizing notebooks, handwritten ink, typed text, and PDF annotations from reMarkable Cloud directly into Microsoft OneNote.
 
 [![GitHub Release](https://img.shields.io/github/v/release/Excustic/rmOneNoteWebExtension?style=flat-square)](https://github.com/Excustic/rmOneNoteWebExtension/releases/latest)
   [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg?style=flat-square)](https://www.gnu.org/licenses/gpl-3.0)
   [![wakatime](https://wakatime.com/badge/user/8e9a9690-1e6c-4138-935e-86ac8d75158f/project/98ad76ca-ed7c-49d3-8e43-68ba74524d81.svg)](https://wakatime.com/badge/user/8e9a9690-1e6c-4138-935e-86ac8d75158f/project/98ad76ca-ed7c-49d3-8e43-68ba74524d81.svg) 
-![Extension Preview](public/images/demo.png)
 
-<a href="https://chromewebstore.google.com/detail/reMarkable%20to%20OneNote%20Sync/hfbphghdoceacolldhjjbbmocnekbinf?hl=en-GB&authuser=0" title="Check it out in Chrome webstore!"><img src="public/images/addon_chrome.png" width="320" alt="Chrome Web Store"></a>
+<a href="https://chromewebstore.google.com/detail/reMarkable%20to%20OneNote%20Sync/hfbphghdoceacolldhjjbbmocnekbinf" title="Check it out in Chrome webstore!"><img src="public/images/addon_chrome.png" width="320" alt="Chrome Web Store"></a>
 <img src="public/images/addon_edge.png" width="320" title="Coming soon" alt="Microsoft Edge Add-ons">
 <a href="https://addons.mozilla.org/en-US/firefox/addon/remarkable-onenote-sync/" title="Check it out in FireFox addons store!"><img src="public/images/addon_firefox.png" width="250" alt="Firefox Add-ons"></a>
 <img src="public/images/addon_opera.png" width="250" title="Coming soon" alt="Opera Add-ons">
 
+![Extension Preview](public/images/demo.png)
 
 ## Why This Extension?
 
