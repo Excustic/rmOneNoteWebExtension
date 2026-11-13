@@ -1,3 +1,4 @@
+import { fetchWithAbortAndTimeout, throwIfAborted } from '../shared/abort';
 import { ext } from '../shared/browser';
 import {
   clearMicrosoftAuth,
@@ -385,11 +386,14 @@ export async function fetchWithMicrosoftAuth(
   init: RequestInit = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<Response> {
+  const signal = init.signal ?? undefined;
+  throwIfAborted(signal);
+
   const token = await getValidMicrosoftAccessToken({ fetchImpl });
   const firstHeaders = new Headers(init.headers);
   firstHeaders.set('Authorization', `Bearer ${token}`);
 
-  const firstResponse = await fetchImpl(input, {
+  const firstResponse = await fetchWithAbortAndTimeout(fetchImpl, input, {
     ...init,
     headers: firstHeaders,
   });
@@ -398,6 +402,7 @@ export async function fetchWithMicrosoftAuth(
     return firstResponse;
   }
 
+  throwIfAborted(signal);
   const refreshedToken = await getValidMicrosoftAccessToken({
     forceRefresh: true,
     fetchImpl,
@@ -405,7 +410,7 @@ export async function fetchWithMicrosoftAuth(
   const retryHeaders = new Headers(init.headers);
   retryHeaders.set('Authorization', `Bearer ${refreshedToken}`);
 
-  return fetchImpl(input, {
+  return fetchWithAbortAndTimeout(fetchImpl, input, {
     ...init,
     headers: retryHeaders,
   });

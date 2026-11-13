@@ -298,6 +298,8 @@ interface TreeNodeRowProps {
   expandedIds: ReadonlySet<string>;
   inspectedDocId: string | null;
   disabled: boolean;
+  canTriggerSync: boolean;
+  syncDisabledReason?: string;
   isSyncingEngine: boolean;
   onToggleCheckbox: (node: FileTreeNode) => void;
   onToggleExpand: (folderId: string) => void;
@@ -315,6 +317,8 @@ function TreeNodeRow({
   expandedIds,
   inspectedDocId,
   disabled,
+  canTriggerSync,
+  syncDisabledReason,
   isSyncingEngine,
   onToggleCheckbox,
   onToggleExpand,
@@ -471,7 +475,8 @@ function TreeNodeRow({
 
           <button
             type="button"
-            disabled={disabled || isSyncingEngine}
+            disabled={!canTriggerSync || isSyncingEngine}
+            title={!canTriggerSync ? syncDisabledReason : undefined}
             onClick={() => onManualSyncNode(node)}
             aria-label={`Sync ${node.visibleName} now`}
             className="inline-flex min-h-7 items-center gap-1 rounded border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
@@ -511,6 +516,8 @@ function TreeNodeRow({
               expandedIds={expandedIds}
               inspectedDocId={inspectedDocId}
               disabled={disabled}
+              canTriggerSync={canTriggerSync}
+              syncDisabledReason={syncDisabledReason}
               isSyncingEngine={isSyncingEngine}
               onToggleCheckbox={onToggleCheckbox}
               onToggleExpand={onToggleExpand}
@@ -547,6 +554,7 @@ export function SyncControlView({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncingNow, setIsSyncingNow] = useState(false);
+  const [isAborting, setIsAborting] = useState(false);
   const [saveSuccessFlash, setSaveSuccessFlash] = useState(false);
   const [feedback, setFeedback] = useState<{ isError: boolean; text: string } | null>(null);
 
@@ -629,10 +637,20 @@ export function SyncControlView({
   }, [getAllDocs, getPrefs, getWl, isDemo]);
 
   useEffect(() => {
-    if (isDemo && currentTourStepId === 'sync-control-pages-panel' && !inspectedDocId) {
-      setInspectedDocId('demo-doc-calc');
+    if (!isDemo) {
+      return;
     }
-  }, [isDemo, currentTourStepId, inspectedDocId]);
+    if (
+      currentTourStepId === 'sync-control-pages-panel' ||
+      currentTourStepId === 'sync-control-page-tags' ||
+      currentTourStepId === 'sync-control-deleted-pages'
+    ) {
+      setInspectedDocId((prev) => prev ?? 'demo-doc-calc');
+      if (currentTourStepId === 'sync-control-deleted-pages') {
+        setShowDeletedPages(true);
+      }
+    }
+  }, [isDemo, currentTourStepId]);
 
   useEffect(() => {
     void hydrateFromLocalCache(false);
@@ -750,13 +768,7 @@ export function SyncControlView({
         const defaultSelectedPages = nonDeletedPages.filter(
           (p) => p.fileSizeBytes > 0 || prefs.syncUnannotatedPdfPages,
         );
-        setSelectedPageIds(
-          new Set(
-            (defaultSelectedPages.length > 0 ? defaultSelectedPages : nonDeletedPages).map(
-              (p) => p.pageId,
-            ),
-          ),
-        );
+        setSelectedPageIds(new Set(defaultSelectedPages.map((p) => p.pageId)));
         return docNode.id;
       });
     },
@@ -1123,6 +1135,42 @@ export function SyncControlView({
   const isEngineBusy =
     isSyncingNow ||
     (overview.phase !== 'Idle' && overview.phase !== 'Error');
+  const syncDisabledReason = !overview.remarkablePaired && !overview.microsoftConnected
+    ? 'Pair your reMarkable Cloud account and connect Microsoft OneNote in Account Setup first.'
+    : !overview.microsoftConnected
+      ? 'Connect your Microsoft OneNote account in Account Setup before syncing.'
+      : !overview.remarkablePaired
+        ? 'Pair your reMarkable Cloud account in Account Setup before syncing.'
+        : undefined;
+
+  async function handleAbortSync() {
+    setIsAborting(true);
+    setFeedback(null);
+    try {
+      const response = (await sendMessage({ type: 'ABORT_SYNC' })) as RuntimeResponse | undefined;
+      if (response?.ok) {
+        setIsSyncingNow(false);
+        await hydrateFromLocalCache(true);
+        onSyncStateChanged(response.state);
+        setFeedback({
+          isError: false,
+          text: response.detail ?? 'Sync aborted by user.',
+        });
+      } else {
+        setFeedback({
+          isError: true,
+          text: response?.error ?? 'Failed to abort sync.',
+        });
+      }
+    } catch (err) {
+      setFeedback({
+        isError: true,
+        text: err instanceof Error ? err.message : 'Failed to reach background sync worker.',
+      });
+    } finally {
+      setIsAborting(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -1137,7 +1185,10 @@ export function SyncControlView({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div
+          data-tour="sync-control-engine-bar"
+          className="flex flex-wrap items-center gap-2.5"
+        >
           <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-700 shadow-2xs">
             <span
               className={`h-2 w-2 rounded-full ${overview.phase === 'Error'
@@ -1155,6 +1206,7 @@ export function SyncControlView({
             <button
               type="button"
               disabled={isEngineBusy || !overview.isConfigured}
+              title={!overview.isConfigured ? syncDisabledReason : undefined}
               onClick={() => void handleRetryAllFailed()}
               className="min-h-9 rounded-md border border-rose-300 bg-rose-50 px-3.5 py-1.5 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -1165,6 +1217,7 @@ export function SyncControlView({
           <button
             type="button"
             disabled={isEngineBusy || !overview.isConfigured}
+            title={!overview.isConfigured ? syncDisabledReason : undefined}
             onClick={() => void handleTriggerGlobalSync()}
             className="inline-flex min-h-9 items-center gap-2 rounded-md bg-brand px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -1174,6 +1227,17 @@ export function SyncControlView({
             />
             <span>{isEngineBusy ? 'Syncing...' : 'Sync Pending'}</span>
           </button>
+
+          {isEngineBusy ? (
+            <button
+              type="button"
+              disabled={isAborting}
+              onClick={() => void handleAbortSync()}
+              className="inline-flex min-h-9 items-center rounded-md border border-rose-300 bg-rose-50 px-3.5 py-1.5 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isAborting ? 'Aborting...' : 'Abort Sync'}
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -1195,6 +1259,28 @@ export function SyncControlView({
             className="min-h-9 rounded-md bg-amber-800 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-amber-900"
           >
             Pair reMarkable Account
+          </button>
+        </div>
+      ) : null}
+
+      {!overview.microsoftConnected ? (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-amber-300 bg-amber-50 p-5 text-amber-950"
+        >
+          <div>
+            <h2 className="text-sm font-semibold">Microsoft OneNote Not Connected</h2>
+            <p className="mt-0.5 text-sm text-amber-900">
+              Sign in to Microsoft OneNote in Account Setup before syncing. You can still browse
+              and save folder selections while OneNote is disconnected.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenSetup}
+            className="min-h-9 rounded-md bg-amber-800 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-amber-900"
+          >
+            Connect OneNote Account
           </button>
         </div>
       ) : null}
@@ -1306,6 +1392,8 @@ export function SyncControlView({
                     expandedIds={expandedIds}
                     inspectedDocId={inspectedDocId}
                     disabled={!overview.remarkablePaired || isSaving}
+                    canTriggerSync={overview.isConfigured}
+                    syncDisabledReason={syncDisabledReason}
                     isSyncingEngine={isEngineBusy}
                     onToggleCheckbox={handleToggleCheckbox}
                     onToggleExpand={handleToggleExpand}
@@ -1399,6 +1487,7 @@ export function SyncControlView({
                     disabled={
                       selectedPageIds.size === 0 || isEngineBusy || !overview.isConfigured
                     }
+                    title={!overview.isConfigured ? syncDisabledReason : undefined}
                     onClick={() =>
                       void handleManualSyncSpecificPages(
                         Array.from(selectedPageIds).map((pageId) => ({
@@ -1415,7 +1504,10 @@ export function SyncControlView({
                 </div>
 
                 {/* Document Pages List */}
-                <div className="scroll-region flex-1 divide-y divide-slate-200 p-3">
+                <div
+                  data-tour="sync-control-pages-list"
+                  className="scroll-region flex-1 divide-y divide-slate-200 p-3"
+                >
                   {inspectedDocPages.length === 0 ? (
                     <div className="py-10 text-center text-xs text-slate-500">
                       No pages indexed for this document yet. Click "Load Folders" or "Sync" to
@@ -1552,7 +1644,10 @@ export function SyncControlView({
 
                       {/* Collapsible Deleted Pages Section */}
                       {deletedPages.length > 0 ? (
-                        <div className="mt-4 border-t border-slate-200/80 pt-3">
+                        <div
+                          data-tour="sync-control-deleted-pages"
+                          className="mt-4 border-t border-slate-200/80 pt-3"
+                        >
                           <button
                             type="button"
                             onClick={() => setShowDeletedPages((prev) => !prev)}
@@ -1659,11 +1754,13 @@ export function SyncControlView({
                                           void handleRecoverPage(page.documentId, page.pageId)
                                         }
                                         title={
-                                          page.oneNotePageId != null
-                                            ? 'Page already recovered to OneNote'
-                                            : isExpired
-                                              ? 'Page content has expired on reMarkable Cloud and cannot be recovered'
-                                              : 'Upload to dedicated (Recovered) OneNote section'
+                                          !overview.isConfigured && syncDisabledReason
+                                            ? syncDisabledReason
+                                            : page.oneNotePageId != null
+                                              ? 'Page already recovered to OneNote'
+                                              : isExpired
+                                                ? 'Page content has expired on reMarkable Cloud and cannot be recovered'
+                                                : 'Upload to dedicated (Recovered) OneNote section'
                                         }
                                         className="inline-flex min-h-7 items-center gap-1 rounded border border-rose-300 bg-white px-2.5 py-1 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                                       >

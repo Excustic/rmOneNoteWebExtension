@@ -13,12 +13,14 @@ import {
   clearStoredCloudRootState,
   syncRemarkableCloudTree,
 } from '../remarkable';
+import { isAbortError } from '../shared/abort';
 import { ext } from '../shared/browser';
 import {
   DEFAULT_SYNC_OVERVIEW,
   type RuntimeRequest,
   type RuntimeResponse,
   type SyncOverviewState,
+  type SyncPhase,
 } from '../shared/messaging';
 import {
   ensureDefaultPreferences,
@@ -31,7 +33,9 @@ import {
   registerSyncLedgerAutoReconcile,
 } from '../storage/syncLedger';
 import {
+  abortActiveSyncCycle,
   cancelSyncItem,
+  isSyncCycleRunning,
   queueManualSyncItems,
   recoverDeletedPage,
   registerAutoSyncAlarmListeners,
@@ -43,6 +47,12 @@ import {
 } from '../sync';
 
 const OVERVIEW_STORAGE_KEY = 'syncOverview';
+const ACTIVE_SYNC_PHASES = new Set<SyncPhase>([
+  'Queued',
+  'Converting',
+  'Uploading',
+  'Indexing',
+]);
 
 type PersistedOverviewFields = Pick<
   SyncOverviewState,
@@ -58,6 +68,7 @@ const DEFAULT_PERSISTED_OVERVIEW: PersistedOverviewFields = {
 const VALID_REQUEST_TYPES_LIST = [
   'GET_SYNC_OVERVIEW',
   'TRIGGER_MANUAL_SYNC',
+  'ABORT_SYNC',
   'CANCEL_SYNC_ITEM',
   'RETRY_FAILED_PAGES',
   'MANUAL_SYNC_ITEMS',
@@ -96,9 +107,23 @@ async function readSyncOverview(): Promise<SyncOverviewState> {
     | Partial<PersistedOverviewFields>
     | undefined;
 
+  let phase = stored?.phase ?? DEFAULT_PERSISTED_OVERVIEW.phase;
+  // Self-heal stale in-flight phases left behind by an MV3 service worker crash or restart.
+  if (ACTIVE_SYNC_PHASES.has(phase) && !isSyncCycleRunning()) {
+    phase = 'Idle';
+    await ext.storage.local.set({
+      [OVERVIEW_STORAGE_KEY]: {
+        ...DEFAULT_PERSISTED_OVERVIEW,
+        ...stored,
+        phase: 'Idle',
+      },
+    });
+  }
+
   return {
     ...DEFAULT_PERSISTED_OVERVIEW,
     ...stored,
+    phase,
     isConfigured: auth.isConfigured,
     remarkablePaired: auth.remarkablePaired,
     microsoftConnected: auth.microsoftConnected,
@@ -133,6 +158,7 @@ async function executeManagedSyncCycle(
   trigger: SyncCycleTrigger,
   forceTreeRefresh = false,
 ): Promise<{ state: SyncOverviewState; summary: SyncCycleSummary }> {
+  const startedAt = new Date().toISOString();
   await writePersistedOverview({ phase: 'Queued', lastError: null });
 
   try {
@@ -142,20 +168,53 @@ async function executeManagedSyncCycle(
       onPhaseChange: async (phase, detail) => {
         await writePersistedOverview({
           phase,
-          ...(phase === 'Error' && detail ? { lastError: detail } : {}),
+          ...(detail && (phase === 'Error' || detail === 'Sync aborted by user.')
+            ? { lastError: detail }
+            : {}),
         });
       },
     });
 
+    const wasAborted = summary.outcomes.some(
+      (item) => item.error === 'Sync aborted by user.',
+    );
     const firstFailure = summary.outcomes.find((item) => item.status === 'Failed');
     const state = await writePersistedOverview({
-      phase: summary.failedCount > 0 && summary.uploadedCount === 0 ? 'Error' : 'Idle',
-      lastError: firstFailure?.error ?? null,
+      phase:
+        !wasAborted && summary.failedCount > 0 && summary.uploadedCount === 0
+          ? 'Error'
+          : 'Idle',
+      lastError: wasAborted
+        ? 'Sync aborted by user.'
+        : (firstFailure?.error ?? null),
       lastSyncedAt: summary.completedAt,
     });
 
     return { state, summary };
   } catch (err) {
+    if (isAbortError(err)) {
+      await resetInProgressPages();
+      const completedAt = new Date().toISOString();
+      const state = await writePersistedOverview({
+        phase: 'Idle',
+        lastError: 'Sync aborted by user.',
+      });
+      return {
+        state,
+        summary: {
+          trigger,
+          startedAt,
+          completedAt,
+          treeSync: null,
+          processedCount: 0,
+          uploadedCount: 0,
+          skippedCount: 0,
+          failedCount: 0,
+          outcomes: [],
+        },
+      };
+    }
+
     const errorMessage =
       err instanceof Error ? err.message : 'Unexpected sync engine failure.';
     await writePersistedOverview({
@@ -198,6 +257,8 @@ ext.runtime.onInstalled.addListener((details) => {
 
       if (details.reason === 'install') {
         await writePersistedOverview(DEFAULT_PERSISTED_OVERVIEW);
+      } else {
+        await writePersistedOverview({ phase: 'Idle' });
       }
     } catch (err) {
       console.error('[rmOneNote] Failed to initialize storage on install:', err);
@@ -209,6 +270,7 @@ ext.runtime.onStartup.addListener(() => {
   void (async () => {
     try {
       await resetInProgressPages();
+      await writePersistedOverview({ phase: 'Idle' });
       await reconcileSyncLedgerToDexie();
       await syncAutoSyncAlarmWithPreferences();
     } catch (err) {
@@ -322,6 +384,19 @@ ext.runtime.onMessage.addListener(
               ok: true,
               state,
               detail: 'Sync item cancelled.',
+            };
+          }
+          case 'ABORT_SYNC': {
+            const wasRunning = abortActiveSyncCycle();
+            await resetInProgressPages();
+            const state = await writePersistedOverview({
+              phase: 'Idle',
+              lastError: wasRunning ? 'Sync aborted by user.' : null,
+            });
+            return {
+              ok: true,
+              state,
+              detail: wasRunning ? 'Sync aborted by user.' : 'Cleared stale sync state.',
             };
           }
           case 'RETRY_FAILED_PAGES': {

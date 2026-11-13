@@ -1,0 +1,89 @@
+name: Bug Report
+description: Create a report to help us fix issues with reMarkable to OneNote Web Extension
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! Please provide as much detail as possible so we can reproduce and fix the issue.
+
+  - type: input
+    id: extension-version
+    attributes:
+      label: Extension Version
+      description: What version of the extension are you running? (e.g., v1.1.0)
+      placeholder: v1.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      description: Which browser are you running the extension in?
+      options:
+        - Google Chrome
+        - Microsoft Edge
+        - Mozilla Firefox
+        - Opera
+        - Other Chromium-based browser
+    validations:
+      required: true
+
+  - type: input
+    id: browser-version
+    attributes:
+      label: Browser Version & Desktop OS
+      description: Please share your browser version and operating system (e.g., Chrome 131 on Windows 11).
+      placeholder: Chrome 131 on Windows 11
+    validations:
+      required: true
+
+  - type: dropdown
+    id: device
+    attributes:
+      label: reMarkable Device
+      description: Which reMarkable tablet are you syncing with?
+      options:
+        - reMarkable 1
+        - reMarkable 2
+        - reMarkable Paper Pro
+        - reMarkable Paper Pro Move
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description of the Bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this behavior?
+      value: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Observe status / error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Screenshots
+      description: Please attach screenshots or paste errors from the extension background service worker / event page DevTools console (ensure no personal tokens are included).
+

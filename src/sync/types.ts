@@ -37,6 +37,7 @@ export interface RunSyncCycleOptions {
   directoryCache?: OneNoteDirectoryCache;
   /** Overrides Phantom Link verification poll delays (mainly for tests). */
   phantomLinkPollDelaysMs?: readonly number[];
+  abortSignal?: AbortSignal;
   onPhaseChange?: (phase: SyncPhase, detail?: string) => Promise<void> | void;
 }
 

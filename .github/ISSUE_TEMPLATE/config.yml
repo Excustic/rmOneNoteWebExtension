@@ -1,0 +1,12 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Troubleshooting & Support
+    url: https://github.com/Excustic/rmOneNoteWebExtension/discussions/categories/q-a
+    about: "Having trouble pairing reMarkable Cloud or signing into Microsoft OneNote? Ask the community for help here."
+  - name: Workflows & Show-and-Tell
+    url: https://github.com/Excustic/rmOneNoteWebExtension/discussions/categories/show-and-tell
+    about: "Share how you organize your notebooks, or show off your OneNote setup!"
+  - name: General Discussion
+    url: https://github.com/Excustic/rmOneNoteWebExtension/discussions/categories/general
+    about: "Chat about the project, future ideas, or reMarkable Cloud / Graph API updates."
+

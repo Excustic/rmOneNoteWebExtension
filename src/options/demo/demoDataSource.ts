@@ -39,6 +39,14 @@ export function createDemoDataSource(
     syncFolders: [...DEMO_WHITELIST.syncFolders],
   };
   let authSummary: AuthStatusSummary = { ...DEMO_AUTH_SUMMARY };
+  let activeSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearActiveSyncTimer() {
+    if (activeSyncTimer !== null) {
+      clearTimeout(activeSyncTimer);
+      activeSyncTimer = null;
+    }
+  }
 
   function notifyOverview(next: SyncOverviewState) {
     overview = next;
@@ -59,7 +67,9 @@ export function createDemoDataSource(
           .toArray();
 
         // Simulate fast transition to uploaded
-        setTimeout(async () => {
+        clearActiveSyncTimer();
+        activeSyncTimer = setTimeout(async () => {
+          activeSyncTimer = null;
           const nowIso = new Date().toISOString();
           for (const page of pendingOrFailed) {
             await demoDb.pages.update([page.documentId, page.pageId], {
@@ -100,7 +110,9 @@ export function createDemoDataSource(
           }
         }
 
-        setTimeout(async () => {
+        clearActiveSyncTimer();
+        activeSyncTimer = setTimeout(async () => {
+          activeSyncTimer = null;
           const nowIso = new Date().toISOString();
           for (const page of pagesToUpdate) {
             await demoDb.pages.update([page.documentId, page.pageId], {
@@ -129,7 +141,9 @@ export function createDemoDataSource(
         const failedPages = await demoDb.pages.where('status').equals('Failed').toArray();
         notifyOverview({ ...overview, phase: 'Uploading' });
 
-        setTimeout(async () => {
+        clearActiveSyncTimer();
+        activeSyncTimer = setTimeout(async () => {
+          activeSyncTimer = null;
           const nowIso = new Date().toISOString();
           for (const page of failedPages) {
             await demoDb.pages.update([page.documentId, page.pageId], {
@@ -152,6 +166,16 @@ export function createDemoDataSource(
           state: { ...overview, phase: 'Uploading' },
           detail: 'Retried failed pages in demo mode.',
         };
+      }
+
+      case 'ABORT_SYNC': {
+        clearActiveSyncTimer();
+        notifyOverview({
+          ...overview,
+          phase: 'Idle',
+          lastError: 'Sync aborted by user.',
+        });
+        return { ok: true, state: overview, detail: 'Sync aborted in demo mode.' };
       }
 
       case 'CANCEL_SYNC_ITEM': {

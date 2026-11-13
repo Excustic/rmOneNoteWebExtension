@@ -42,6 +42,7 @@ export const DEFAULT_SYNC_OVERVIEW: SyncOverviewState = {
 export type RuntimeRequest =
   | { type: 'GET_SYNC_OVERVIEW' }
   | { type: 'TRIGGER_MANUAL_SYNC'; forceTreeRefresh?: boolean }
+  | { type: 'ABORT_SYNC' }
   | { type: 'CANCEL_SYNC_ITEM'; documentId: string; pageId: string }
   | { type: 'RETRY_FAILED_PAGES'; documentId?: string; pageId?: string; runNow?: boolean }
   | {

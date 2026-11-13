@@ -35,11 +35,34 @@ describe('Interactive Onboarding Tour & Demo Mode', () => {
     const loadStep = TOUR_STEPS.find((s) => s.id === 'sync-control-load');
     expect(loadStep?.target).toBe('sync-control-load-btn');
 
+    const settingsPrivacyStep = TOUR_STEPS.find((s) => s.id === 'settings-privacy');
+    expect(settingsPrivacyStep?.target).toBe('settings-privacy-section');
+    expect(settingsPrivacyStep?.emphasis).toBe(true);
+    expect(settingsPrivacyStep?.description).toContain('profile sync storage');
+
     const settingsStep = TOUR_STEPS.find((s) => s.id === 'settings-holistic');
     expect(settingsStep?.target).toBe('settings-container');
 
+    const setupMsIdx = TOUR_STEPS.findIndex((s) => s.id === 'setup-microsoft');
+    const privacyIdx = TOUR_STEPS.findIndex((s) => s.id === 'settings-privacy');
+    const settingsIdx = TOUR_STEPS.findIndex((s) => s.id === 'settings-holistic');
+    const dashboardIdx = TOUR_STEPS.findIndex((s) => s.id === 'dashboard-overview');
+    expect(setupMsIdx).toBeGreaterThan(-1);
+    expect(privacyIdx).toBe(setupMsIdx + 1);
+    expect(settingsIdx).toBe(privacyIdx + 1);
+    expect(dashboardIdx).toBe(settingsIdx + 1);
+
     const sidebarTourStep = TOUR_STEPS.find((s) => s.id === 'tour-sidebar-button');
     expect(sidebarTourStep?.target).toBe('sidebar-tour-btn');
+
+    const pageTagsStep = TOUR_STEPS.find((s) => s.id === 'sync-control-page-tags');
+    expect(pageTagsStep?.target).toBe('sync-control-pages-list');
+    expect(pageTagsStep?.description).toContain('Out of date');
+    expect(pageTagsStep?.description).toContain('Reorder Pending');
+
+    const deletedPagesStep = TOUR_STEPS.find((s) => s.id === 'sync-control-deleted-pages');
+    expect(deletedPagesStep?.target).toBe('sync-control-deleted-pages');
+    expect(deletedPagesStep?.description).toContain('Deleted on tablet');
 
     // Ensure redundant expand step is removed
     const redundantExpandStep = TOUR_STEPS.find((s) => s.id === 'sync-control-expand');
@@ -54,7 +77,7 @@ describe('Interactive Onboarding Tour & Demo Mode', () => {
     const notebooks = await demoDb.notebooks.toArray();
 
     expect(docs.length).toBe(9);
-    expect(pages.length).toBe(9);
+    expect(pages.length).toBe(11);
     expect(notebooks.length).toBe(2);
 
     const roots = buildFileTreeHierarchy(docs);
@@ -67,6 +90,9 @@ describe('Interactive Onboarding Tour & Demo Mode', () => {
     expect(statuses.has('Uploaded')).toBe(true);
     expect(statuses.has('Failed')).toBe(true);
     expect(statuses.has('Pending')).toBe(true);
+    expect(statuses.has('Deleted')).toBe(true);
+    expect(pages.some((p) => p.titleRenameOnly)).toBe(true);
+    expect(pages.some((p) => p.fileSizeBytes === 0)).toBe(true);
   });
 
   it('handles simulated messaging and state transitions in demo mode without affecting real storage', async () => {
@@ -96,7 +122,7 @@ describe('Interactive Onboarding Tour & Demo Mode', () => {
       expect(msRes.state.isConfigured).toBe(true);
     }
 
-    // Simulated manual sync
+    // Simulated manual sync followed by Abort Sync
     const syncRes = await ds.sendMessage({
       type: 'TRIGGER_MANUAL_SYNC',
     });
@@ -105,6 +131,14 @@ describe('Interactive Onboarding Tour & Demo Mode', () => {
       expect(syncRes.state.phase).toBe('Uploading');
     }
     expect(overviewState).toBeDefined();
+
+    const abortRes = await ds.sendMessage({
+      type: 'ABORT_SYNC',
+    });
+    expect(abortRes.ok).toBe(true);
+    if (abortRes.ok) {
+      expect(abortRes.state.phase).toBe('Idle');
+    }
 
     // Demo whitelist saving reconciles demo pages
     const saveRes = await ds.saveWhitelist({

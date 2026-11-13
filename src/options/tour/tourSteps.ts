@@ -53,27 +53,47 @@ export const TOUR_STEPS: readonly TourStepDefinition[] = [
     preferredPlacement: 'bottom',
     title: '2. Microsoft OneNote Account',
     description:
-      'Click "Sign in with Microsoft" to connect your Microsoft account (personal, school, or work). OAuth refresh tokens are stored safely in your local browser and automatically refreshed for autonomous background syncing.',
+      'Click "Sign in with Microsoft" to connect your Microsoft account (personal, school, or work). Both reMarkable Cloud and Microsoft OneNote must be connected before Sync buttons become active. OAuth tokens stay local in your browser.',
     interactiveHint: 'Try clicking "Sign in with Microsoft" to simulate connecting.',
+  },
+  {
+    id: 'settings-privacy',
+    route: 'settings',
+    target: 'settings-privacy-section',
+    preferredPlacement: 'top',
+    emphasis: true,
+    title: 'Privacy & Cross-Device Profile Sync',
+    description:
+      'By default, this extension synchronizes your preferences, folder selections, and rolling page sync history across different devices using your browser profile sync storage (Chrome Sync or Firefox Sync). If you do not want this information stored in your browser profile cloud, enable "Local-only storage mode" here to opt out and keep everything strictly on this device.',
+    interactiveHint: 'Toggle "Local-only storage mode" to test keeping all data strictly local.',
+  },
+  {
+    id: 'settings-holistic',
+    route: 'settings',
+    target: 'settings-container',
+    preferredPlacement: 'bottom',
+    title: 'Extension Settings, Lifecycle & Portability',
+    description:
+      'Settings lets you configure autonomous sync frequency, root notebook grouping (default "Documents" -> rm_Documents, or blank for individual notebooks), Mirror vs Preserve deletion/reordering strategy, skipping blank unannotated PDF pages, worker concurrency, layout width, and portable database backups.',
   },
   {
     id: 'dashboard-overview',
     route: 'dashboard',
     target: 'dashboard-overview-cards',
     preferredPlacement: 'bottom',
-    title: 'Dashboard: Status Overview',
+    title: 'Dashboard: Status Overview & Profile Storage',
     description:
-      'The Dashboard is your command center. These three status panels monitor your background engine state (Idle, Converting, or Uploading), your paired reMarkable and Microsoft accounts, and the total count of successfully synchronized pages.',
+      'These four panels monitor your engine pipeline state, both paired accounts, uploaded/pending/failed page counts, and Profile Storage — showing whether browser profile sync is active (with its last updated timestamp) or set to Local-Only.',
   },
   {
     id: 'dashboard-sync-now',
     route: 'dashboard',
     target: 'dashboard-sync-now-btn',
     preferredPlacement: 'bottom',
-    title: 'Immediate Sync on Demand',
+    title: 'Sync Progress Phases & Abort Control',
     description:
-      'Whenever you finish writing on your reMarkable tablet and want your notes in OneNote immediately without waiting for the scheduled background sync, click "Sync Now". Click it now to watch the demo update in real time!',
-    interactiveHint: 'Click "Sync Now" to trigger a simulated synchronization cycle.',
+      'Click "Sync Now" to run an immediate sync cycle. Watch Pipeline State move through Queued (scanning cloud changes), Converting (.rm strokes & PDF backgrounds to InkML), Uploading (sending to OneNote), Indexing (verifying web links), and back to Idle (or Error if an upload fails). An "Abort Sync" button appears while syncing if you ever need to stop cleanly.',
+    interactiveHint: 'Click "Sync Now" to watch the demo pipeline transition in real time.',
   },
   {
     id: 'dashboard-resize-divider',
@@ -109,9 +129,9 @@ export const TOUR_STEPS: readonly TourStepDefinition[] = [
     route: 'sync-control',
     target: 'sync-control-tree',
     preferredPlacement: 'top',
-    title: 'Sync Control: File Hierarchy',
+    title: 'Sync Control: File Hierarchy & Progress',
     description:
-      'Sync Control displays your full reMarkable folder and notebook hierarchy. This is where you configure which folders and notebooks are synchronized to Microsoft OneNote.',
+      'Sync Control mirrors your reMarkable folder and notebook hierarchy. The Engine badge in the top-right shows live progress (Idle, Queued, Converting, Uploading, Indexing, or Error), and an Abort Sync button appears whenever a sync is active. Notebooks with newer tablet edits display an "Out of date" badge.',
   },
   {
     id: 'sync-control-folder-select',
@@ -150,16 +170,25 @@ export const TOUR_STEPS: readonly TourStepDefinition[] = [
     preferredPlacement: 'left',
     title: 'Document Pages & Individual Sync',
     description:
-      'The Pages Inspector lists every page in the notebook with its sync status, file size, and timestamp. You can select individual pages to sync immediately, retry failed uploads, or open them in OneNote.',
+      'The Pages Inspector lists every page in the selected notebook with checkboxes to run "Sync Selected", individual "Sync" or "Cancel" actions, OneNote web links, file sizes, and sync timestamps.',
   },
   {
-    id: 'settings-holistic',
-    route: 'settings',
-    target: 'settings-container',
-    preferredPlacement: 'bottom',
-    title: 'Extension Settings & Portability',
+    id: 'sync-control-page-tags',
+    route: 'sync-control',
+    target: 'sync-control-pages-list',
+    preferredPlacement: 'left',
+    title: 'Understanding Page Status Tags & Badges',
     description:
-      'Settings lets you fine-tune autonomous sync frequency, set default target OneNote sections, adjust container dimensions, and manage local database backups. Backups allow seamlessly transferring full sync histories to fresh browsers and PCs.',
+      'Badges next to each page tell you its exact state: Uploaded / Pending / Queued / Converting / Uploading / Indexing / Failed / Skipped track pipeline progress; "Out of date" means edits happened on the tablet after the last upload; "Moved: Page X -> Page Y" and "Reorder Pending" indicate page reordering; and "0 KB (Blank / No strokes)" marks unannotated pages skipped by default.',
+  },
+  {
+    id: 'sync-control-deleted-pages',
+    route: 'sync-control',
+    target: 'sync-control-deleted-pages',
+    preferredPlacement: 'left',
+    title: 'Deleted Pages & Recovery',
+    description:
+      'Pages removed on your tablet appear under "Deleted Pages" with "Deleted" / "Deleted on tablet" tags. Click "Recover" to upload the preserved page to a dedicated "(Recovered)" OneNote section whenever the cloud blob is still available.',
   },
   {
     id: 'tour-sidebar-button',

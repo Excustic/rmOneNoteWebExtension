@@ -1,0 +1,43 @@
+name: Hardware & Browser Compatibility Report
+description: Tell us if the extension works on an untested browser, OS, or reMarkable device combination!
+title: "[Compatibility]: Works on "
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping verify browser, OS, and hardware compatibility!
+  - type: input
+    id: browser-os
+    attributes:
+      label: Browser & Desktop OS
+      placeholder: e.g., Firefox 142 on Arch Linux, Chrome 131 on macOS 15
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: reMarkable Device
+      options:
+        - reMarkable 1
+        - reMarkable 2
+        - reMarkable Paper Pro
+        - reMarkable Paper Pro Move
+    validations:
+      required: true
+  - type: input
+    id: rm-os
+    attributes:
+      label: reMarkable OS Version
+      placeholder: e.g., v3.25.1.1
+    validations:
+      required: true
+  - type: input
+    id: extension-version
+    attributes:
+      label: Extension Version
+      description: "Which version of the extension are you running? (e.g., v1.1.0). You can find releases [here](https://github.com/Excustic/rmOneNoteWebExtension/releases)."
+      placeholder: "v1.1.0"
+    validations:
+      required: true
+

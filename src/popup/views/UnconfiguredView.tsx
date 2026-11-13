@@ -33,6 +33,11 @@ export function UnconfiguredView({
             </dd>
           </div>
         </dl>
+        {overview.remarkablePaired && !overview.microsoftConnected ? (
+          <p className="mt-2.5 rounded border border-amber-200 bg-amber-50 p-2 text-[11px] font-medium text-amber-900">
+            reMarkable is paired. Connect Microsoft OneNote in Setup before you can sync notebooks.
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-2">

@@ -767,6 +767,33 @@ describe('syncRemarkableCloudTree, delta updates, and in-memory .rm extraction',
     expect(page2?.pageNumber).toBe('2');
     expect(page2?.title).toBe('Page 2');
 
+    // Regression check: When root hash changes due to an unrelated document changing,
+    // unchanged DOC_CALCULUS_ID must NOT promote its blank page from Skipped to Pending.
+    server.state.hash = 'root_v2';
+    server.state.blobs.root_v2 = [
+      '4',
+      '0:.:2:2000',
+      `calc_entry:0:${DOC_CALCULUS_ID}:0:500`,
+      `lin_entry:0:${DOC_LINEAR_ID}:0:500`,
+    ].join('\n');
+    server.state.blobs.lin_entry = [
+      '4',
+      '0:.:1:1000',
+      `meta_lin:0:${DOC_LINEAR_ID}.metadata:0:100`,
+    ].join('\n');
+    server.state.blobs.meta_lin = JSON.stringify({
+      visibleName: 'Linear Algebra',
+      type: 'DocumentType',
+      parent: '',
+      lastModified: '1730900200000',
+    });
+
+    await syncRemarkableCloudTree({
+      database: testDb,
+      fetchImpl: server.fetchImpl,
+    });
+    expect((await testDb.pages.get([DOC_CALCULUS_ID, BLANK_PAGE_ID]))?.status).toBe('Skipped');
+
     // When syncUnannotatedPdfPages is toggled true, reconcile flips page 2 to Pending
     await updatePreferences({ syncUnannotatedPdfPages: true });
     await syncRemarkableCloudTree({

@@ -3,7 +3,9 @@ import type { SyncOverviewState } from '../../shared/messaging';
 interface QuickStatusViewProps {
   overview: SyncOverviewState;
   isSyncing: boolean;
+  isAborting?: boolean;
   onManualSync: () => void;
+  onAbortSync: () => void;
   onOpenRoute: (route: string) => void;
 }
 
@@ -23,7 +25,9 @@ function formatTimestamp(isoString: string | null): string {
 export function QuickStatusView({
   overview,
   isSyncing,
+  isAborting = false,
   onManualSync,
+  onAbortSync,
   onOpenRoute,
 }: QuickStatusViewProps) {
   return (
@@ -68,6 +72,17 @@ export function QuickStatusView({
         >
           {isSyncing ? 'Syncing...' : 'Sync Now'}
         </button>
+
+        {isSyncing ? (
+          <button
+            type="button"
+            disabled={isAborting}
+            onClick={onAbortSync}
+            className="min-h-8 w-full rounded-md border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isAborting ? 'Aborting...' : 'Abort Sync'}
+          </button>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-2">
           <button

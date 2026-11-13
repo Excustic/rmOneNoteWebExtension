@@ -12,6 +12,7 @@ export function PopupApp() {
   const [overview, setOverview] = useState<SyncOverviewState>(DEFAULT_SYNC_OVERVIEW);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isAborting, setIsAborting] = useState(false);
   const [statusAnnouncement, setStatusAnnouncement] = useState('');
 
   useEffect(() => {
@@ -62,6 +63,31 @@ export function PopupApp() {
       setIsSyncing(false);
     }
   }, []);
+
+  const handleAbortSync = useCallback(async () => {
+    setIsAborting(true);
+    try {
+      const response = (await ext.runtime.sendMessage({
+        type: 'ABORT_SYNC',
+      })) as RuntimeResponse | undefined;
+
+      if (response?.ok) {
+        setOverview(response.state);
+        setIsSyncing(false);
+        setStatusAnnouncement(response.detail ?? 'Sync aborted by user.');
+      } else {
+        setStatusAnnouncement(response?.error ?? 'Failed to abort sync.');
+      }
+    } catch (err) {
+      console.error('[rmOneNote] Abort sync failed:', err);
+      setStatusAnnouncement('Failed to reach background sync worker.');
+    } finally {
+      setIsAborting(false);
+    }
+  }, []);
+
+  const isEngineBusy =
+    isSyncing || (overview.phase !== 'Idle' && overview.phase !== 'Error');
 
   const handleOpenDashboard = useCallback(async () => {
     try {
@@ -124,8 +150,10 @@ export function PopupApp() {
         ) : overview.isConfigured ? (
           <QuickStatusView
             overview={overview}
-            isSyncing={isSyncing}
+            isSyncing={isEngineBusy}
+            isAborting={isAborting}
             onManualSync={() => void handleManualSync()}
+            onAbortSync={() => void handleAbortSync()}
             onOpenRoute={(route) => void handleOpenRoute(route)}
           />
         ) : (
@@ -142,7 +170,7 @@ export function PopupApp() {
       </div>
 
       <footer className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-2 text-[11px] text-slate-500">
-        <span>v1.1.0</span>
+        <span>v1.2.0</span>
         <button
           type="button"
           onClick={() => void handleOpenRoute('settings')}

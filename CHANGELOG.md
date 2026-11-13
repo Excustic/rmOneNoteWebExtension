@@ -5,15 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] - 2026-11-13
 
 ### Added
+- **Abort Sync Control (`ABORT_SYNC`)**: added an interactive `Abort Sync` action across the Dashboard, Sync Control header, and extension Popup whenever sync is active, enabling immediate cancellation of in-flight uploads, retry backoffs, and worker loops while reverting incomplete pages cleanly back to `Pending`.
+- **Microsoft OneNote Connection Prompts**: added explicit status banners and descriptive button tooltips across Sync Control, Dashboard, and Popup (`UnconfiguredView`) whenever Microsoft OneNote is not yet connected, explaining why Sync actions remain disabled until sign-in is completed.
+- **Expanded Onboarding Tour & Demo Fixtures (`tourSteps.ts`, `demoData.ts`)**: updated and reordered interactive tour walkthrough placing Privacy & Browser Profile Sync explanation (`settings-privacy`) and Settings immediately after account setup, followed by all 6 sync pipeline phases (`Idle`, `Queued`, `Converting`, `Uploading`, `Indexing`, `Error`), status badges (`Out of date`, `Moved: Page X -> Page Y`, `Reorder Pending`, `0 KB (Blank / No strokes)`, `Deleted`, `Deleted on tablet`), Deleted Pages recovery, `Abort Sync`, and `Profile Storage` monitoring.
+- **Open-Source Community Documentation & Issue Templates (`CONTRIBUTING.md`, `README.md`, `.github/ISSUE_TEMPLATE/`)**: added contributor onboarding guide, structured GitHub bug/feature/compatibility issue forms, and expanded `README.md` with up-to-date features, architecture notes, and an **Acknowledgements & Sources** section citing upstream projects (`ddvk/rmapi`, `ricklupton/rmscene`, `ricklupton/rmc`, `rmOneNoteSync`, and core libraries).
 - Local-only storage opt-out mode in Settings (`SettingsView.tsx`, `src/storage/preferences.ts`, `src/storage/syncLedger.ts`): provides privacy-conscious users an option to store all extension preferences, whitelist selections, and rolling sync ledger records strictly on the local machine (`chrome.storage.local`), disabling browser vendor account profile cloud sync (`chrome.storage.sync`). Includes bidirectional automatic data migration and wiping from cloud storage upon activation.
 - Browser profile cloud storage monitoring in Dashboard (`DashboardView.tsx`) and Settings (`SettingsView.tsx`): dedicated overview card displaying live profile storage status (`Local Only` vs `Cloud Synced`), human-readable timestamp of the last write to browser account cloud storage, and privacy indicators.
 - Comprehensive privacy policy (`PRIVACY.md`): details zero user tracking, client-side only processing, credential containment, and permission justifications for Chrome Web Store and Firefox Add-ons (AMO) compliance.
 
 ### Changed
+- **Responsive Sidebar Sizing (`Sidebar.tsx`)**: replaced the fixed `w-70` (280px) sidebar width with responsive sizing bounded strictly between `200px` and `300px` (`w-[clamp(200px,20vw,300px)] min-w-[200px] max-w-[300px]`) so smaller viewports retain ample workspace.
 - Dashboard metrics layout expanded to 4 responsive columns (`sm:grid-cols-2 lg:grid-cols-4`) to accommodate real-time Profile Storage status alongside Sync Status, Queue Counters, and Connected Accounts.
+
+### Fixed
+- **Stuck Sync State & Hung Network/Pagination Guards**:
+  - Added automatic self-healing in `src/background/index.ts` (`readSyncOverview`, `onInstalled`, `onStartup`) so stale in-flight overview phases (`Queued`, `Converting`, `Uploading`, `Indexing`) persisted across service worker termination or restart automatically reset to `Idle` when no sync cycle is active.
+  - Added `src/shared/abort.ts` (`fetchWithAbortAndTimeout`) with bounded 60-second request timeouts and immediate `AbortSignal` propagation across Microsoft Graph and reMarkable Cloud API calls, plus `AbortError` short-circuiting and `@odata.nextLink` loop protection (`seenUrls`) in `OneNoteClient`.
+- Unintended mass upload of unannotated/blank PDF pages when `syncUnannotatedPdfPages` is disabled:
+  - Fixed unchanged-document whitelist reconciliation in `src/remarkable/treeSync.ts` (`unchangedActiveDocIds`), which previously ignored `fileSizeBytes === 0` and `syncUnannotatedPdfPages` and flipped `Skipped` blank pages to `Pending` whenever an unrelated document changed on reMarkable Cloud. Extracted shared `canAutoSyncPage` and `resolveReconciledPageStatus` helpers across all tree sync and whitelist paths.
+  - Added defense-in-depth blank page guard in `src/sync/syncEngine.ts`: `processSinglePage` refuses to auto-upload blank pages (`fileSizeBytes === 0`) when `syncUnannotatedPdfPages` is `false`, and document/folder-level manual sync (`queueManualSyncItems` with `documentIds`) skips blank pages unless explicitly overridden per page.
+  - Updated Sync Control page inspector default selection in `src/options/views/SyncControlView.tsx` so opening an unannotated PDF no longer falls back to pre-selecting all blank pages when `syncUnannotatedPdfPages` is disabled.
 
 ## [1.1.0] - 2026-11-10
 

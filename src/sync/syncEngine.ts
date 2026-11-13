@@ -12,9 +12,11 @@ import {
   getAllDocuments,
   getPagesByStatus,
   getPendingPages,
+  resetInProgressPages,
   setDocumentOneNoteUrl,
   updatePageStatus,
 } from '../db/repository';
+import { createAbortError, isAbortError, throwIfAborted } from '../shared/abort';
 import {
   KeyedMutex,
   OneNoteClient,
@@ -44,6 +46,7 @@ const DEFAULT_SYNC_WORKER_CONCURRENCY = 3;
 const cancelledPageKeys = new Set<string>();
 const manualOverridePageKeys = new Set<string>();
 let activeDefaultSyncCycle: Promise<SyncCycleSummary> | null = null;
+let activeDefaultAbortController: AbortController | null = null;
 
 function buildPageKey(documentId: string, pageId: string): string {
   return `${documentId}:${pageId}`;
@@ -69,6 +72,18 @@ export function resolveNonCollidingPageTitle(
 
 export function isSyncCycleRunning(): boolean {
   return activeDefaultSyncCycle !== null;
+}
+
+/**
+ * Signals any currently running default sync cycle to abort cleanly at the
+ * earliest cancellation point (including in-flight HTTP requests and retry backoffs).
+ */
+export function abortActiveSyncCycle(): boolean {
+  if (!activeDefaultAbortController || activeDefaultAbortController.signal.aborted) {
+    return false;
+  }
+  activeDefaultAbortController.abort(createAbortError('Sync aborted by user.'));
+  return true;
 }
 
 /**
@@ -112,14 +127,19 @@ export async function queueManualSyncItems(
     return 0;
   }
 
+  const prefs = docIdSet.size > 0 ? await getPreferences() : null;
+
   return database.transaction('rw', database.pages, async () => {
     const matchedMap = new Map<string, PageRecord>();
 
-    if (docIdSet.size > 0) {
+    if (docIdSet.size > 0 && prefs) {
       for (const docId of docIdSet) {
         const docPages = await database.pages.where('documentId').equals(docId).toArray();
         for (const page of docPages) {
-          if (page.status !== 'Deleted') {
+          if (
+            page.status !== 'Deleted' &&
+            (page.fileSizeBytes > 0 || prefs.syncUnannotatedPdfPages)
+          ) {
             matchedMap.set(buildPageKey(page.documentId, page.pageId), page);
           }
         }
@@ -264,14 +284,17 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
     concurrency: concurrencyOverride,
     database = db,
     fetchImpl,
+    abortSignal,
     onPhaseChange,
   } = options;
 
   const startedAt = new Date().toISOString();
   cancelledPageKeys.clear();
+  throwIfAborted(abortSignal);
 
   // 1. Reconcile any cross-PC sync ledger records into local Dexie before diffing.
   await reconcileSyncLedgerToDexie(database);
+  throwIfAborted(abortSignal);
 
   const auth = await getAuthStatusSummary();
   const hasCustomFetch = fetchImpl !== undefined;
@@ -298,6 +321,7 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
     database,
     fetchImpl,
   });
+  throwIfAborted(abortSignal);
 
   if (!auth.microsoftConnected && !hasCustomFetch && !hasCustomOneNote) {
     await onPhaseChange?.('Idle');
@@ -352,6 +376,7 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
       fetchImpl,
       maxConcurrentRequests: Math.max(1, effectiveConcurrency),
       phantomLinkPollDelaysMs: options.phantomLinkPollDelaysMs,
+      signal: abortSignal,
     });
 
   const directoryCache =
@@ -359,6 +384,7 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
 
   // Pre-warm notebook & section cache in a single Graph call (non-fatal if it fails).
   await directoryCache.primeFromGraph();
+  throwIfAborted(abortSignal);
 
   // Reconcile deleted pages according to the active lifecycle strategy
   if (prefs.pageSyncStrategy === 'mirror') {
@@ -370,6 +396,7 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
       );
       const purgedFromOneNote: Array<{ documentId: string; pageId: string }> = [];
       for (const delPage of deletedPages) {
+        throwIfAborted(abortSignal);
         if (delPage.oneNotePageId) {
           const deleted = await oneNoteClient.deletePage(delPage.oneNotePageId);
           if (deleted) {
@@ -676,7 +703,11 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
       };
     }
 
-    if (!whitelistedDocsLower.has(page.documentId.toLowerCase()) && !isManualOverride) {
+    const isUnwhitelisted = !whitelistedDocsLower.has(page.documentId.toLowerCase());
+    const isDisallowedBlankPage =
+      page.fileSizeBytes === 0 && !prefs.syncUnannotatedPdfPages;
+
+    if (!isManualOverride && (isUnwhitelisted || isDisallowedBlankPage)) {
       await updatePageStatus(page.documentId, page.pageId, 'Skipped', {}, database);
       return {
         documentId: page.documentId,
@@ -954,6 +985,25 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
         };
       }
 
+      if (abortSignal?.aborted || isAbortError(err)) {
+        await updatePageStatus(
+          page.documentId,
+          page.pageId,
+          'Pending',
+          { lastError: null },
+          database,
+        );
+        return {
+          documentId: page.documentId,
+          pageId: page.pageId,
+          virtualPath: page.virtualPath,
+          status: 'Skipped',
+          oneNotePageId: page.oneNotePageId,
+          oneNotePageUrl: page.oneNotePageUrl,
+          error: 'Sync aborted by user.',
+        };
+      }
+
       console.error(
         `[rmOneNote] Failed to sync page ${page.virtualPath} (${page.documentId}/${page.pageId}):`,
         err,
@@ -984,6 +1034,9 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
   const workerCount = Math.max(1, Math.min(effectiveConcurrency, pendingPages.length));
   const runWorker = async (): Promise<void> => {
     while (nextIndex < pendingPages.length) {
+      if (abortSignal?.aborted) {
+        break;
+      }
       const current = nextIndex++;
       outcomes[current] = await processSinglePage(pendingPages[current], current);
     }
@@ -991,10 +1044,15 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
 
   await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
 
+  if (abortSignal?.aborted) {
+    await resetInProgressPages(database);
+  }
+
+  const completedOutcomes = outcomes.filter((item): item is PageSyncOutcome => Boolean(item));
   let uploadedCount = 0;
   let skippedCount = 0;
   let failedCount = 0;
-  for (const outcome of outcomes) {
+  for (const outcome of completedOutcomes) {
     if (outcome.status === 'Uploaded') {
       uploadedCount++;
     } else if (outcome.status === 'Skipped') {
@@ -1004,8 +1062,10 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
     }
   }
 
-  const firstFailure = outcomes.find((item) => item.status === 'Failed');
-  if (failedCount > 0 && uploadedCount === 0) {
+  const firstFailure = completedOutcomes.find((item) => item.status === 'Failed');
+  if (abortSignal?.aborted) {
+    await onPhaseChange?.('Idle', 'Sync aborted by user.');
+  } else if (failedCount > 0 && uploadedCount === 0) {
     await onPhaseChange?.('Error', firstFailure?.error ?? 'One or more pages failed to sync.');
   } else {
     await onPhaseChange?.('Idle');
@@ -1016,11 +1076,11 @@ async function executeSyncCycle(options: RunSyncCycleOptions): Promise<SyncCycle
     startedAt,
     completedAt: new Date().toISOString(),
     treeSync,
-    processedCount: outcomes.length,
+    processedCount: completedOutcomes.length,
     uploadedCount,
     skippedCount,
     failedCount,
-    outcomes,
+    outcomes: completedOutcomes,
   };
 }
 
@@ -1045,7 +1105,28 @@ export async function runSyncCycle(
   }
 
   if (!activeDefaultSyncCycle) {
-    activeDefaultSyncCycle = executeSyncCycle(options).finally(() => {
+    const controller = new AbortController();
+    activeDefaultAbortController = controller;
+    const callerSignal = options.abortSignal;
+    const onCallerAbort = () => controller.abort(createAbortError('Sync aborted by user.'));
+    if (callerSignal) {
+      if (callerSignal.aborted) {
+        onCallerAbort();
+      } else {
+        callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+      }
+    }
+
+    activeDefaultSyncCycle = executeSyncCycle({
+      ...options,
+      abortSignal: controller.signal,
+    }).finally(() => {
+      if (callerSignal) {
+        callerSignal.removeEventListener('abort', onCallerAbort);
+      }
+      if (activeDefaultAbortController === controller) {
+        activeDefaultAbortController = null;
+      }
       activeDefaultSyncCycle = null;
     });
   }

@@ -1178,4 +1178,220 @@ describe('Phase 7: Autonomous Sync Engine and Alarm Scheduler', () => {
     const updated = await getPage(DOC_ID, PAGE_1_ID, testDb);
     expect(updated?.status).toBe('Uploaded');
   });
+
+  it('never auto-uploads or document-syncs blank pages when syncUnannotatedPdfPages is false, while permitting explicit per-page sync', async () => {
+    const rmBytes = buildMinimalRmV3Bytes();
+    const uploadedPageTitles: string[] = [];
+
+    const cloudBlobs: Record<string, string | Uint8Array> = {
+      root_hash: [
+        '4',
+        '0:.:1:8000',
+        `sub_doc_blank_test:80000000:${DOC_ID}:4:8000`,
+      ].join('\n'),
+      sub_doc_blank_test: [
+        '4',
+        '0:.:3:8000',
+        `meta_doc:0:${DOC_ID}.metadata:0:150`,
+        `content_doc:0:${DOC_ID}.content:0:300`,
+        `rm_p1:0:${DOC_ID}/${PAGE_1_ID}.rm:0:${rmBytes.byteLength}`,
+      ].join('\n'),
+      meta_doc: JSON.stringify({
+        visibleName: 'AnnotatedPDF',
+        type: 'DocumentType',
+        parent: '',
+        lastModified: String(Date.now() - 60_000),
+        version: 1,
+      }),
+      content_doc: JSON.stringify({
+        cPages: {
+          pages: [
+            { id: PAGE_1_ID, idx: { timestamp: '1:1', value: 'aa' } },
+            { id: PAGE_2_ID, idx: { timestamp: '1:2', value: 'ab' } },
+          ],
+        },
+      }),
+      rm_p1: rmBytes,
+    };
+
+    const mockFetch: typeof fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const method = (init?.method ?? 'GET').toUpperCase();
+
+      if (url === REMARKABLE_SYNC_ROOT_URL) {
+        return new Response(JSON.stringify({ hash: 'root_hash', generation: 1, schemaVersion: 4 }), { status: 200 });
+      }
+      if (url.startsWith(`${REMARKABLE_SYNC_FILES_URL}/`)) {
+        const hash = decodeURIComponent(url.slice(`${REMARKABLE_SYNC_FILES_URL}/`.length));
+        const data = cloudBlobs[hash];
+        if (data) {
+          const body = typeof data === 'string' ? data : (data as unknown as BodyInit);
+          return new Response(body, { status: 200 });
+        }
+        return new Response('Not Found', { status: 404 });
+      }
+
+      const parsedUrl = new URL(url);
+      const path = parsedUrl.pathname.replace(/^\/v1\.0\/me\/onenote/, '');
+
+      if (path === '/notebooks' && method === 'GET') {
+        return new Response(
+          JSON.stringify({
+            value: [
+              {
+                id: 'nb-docs',
+                displayName: 'rm_Documents',
+                sections: [{ id: 'sec-pdf', displayName: 'AnnotatedPDF' }],
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (path === '/sections/sec-pdf/pages' && method === 'GET') {
+        return new Response(JSON.stringify({ value: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (path === '/sections/sec-pdf/pages' && method === 'POST') {
+        const rawBody =
+          init?.body instanceof Uint8Array
+            ? new TextDecoder().decode(init.body)
+            : String(init?.body ?? '');
+        const titleMatch = rawBody.match(/<title>([^<]+)<\/title>/);
+        const title = titleMatch ? titleMatch[1] : `Unknown (${uploadedPageTitles.length + 1})`;
+        uploadedPageTitles.push(title);
+        const id = `on-pg-${uploadedPageTitles.length}`;
+        return new Response(
+          JSON.stringify({
+            id,
+            title,
+            links: { oneNoteWebUrl: { href: `https://onenote.com/${id}` } },
+          }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (path.includes('/pages/on-pg-') && method === 'GET') {
+        const id = path.split('/').pop()!;
+        return new Response(
+          JSON.stringify({
+            id,
+            links: { oneNoteWebUrl: { href: `https://onenote.com/${id}` } },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+
+      return new Response(JSON.stringify({ value: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await updatePreferences({ targetSection: 'Documents', syncUnannotatedPdfPages: false });
+    await setWhitelist({ syncFiles: [DOC_ID], syncFolders: [] });
+
+    // Pre-seed blank page with stale Pending status to verify syncEngine's defense-in-depth guard
+    await savePage(
+      {
+        documentId: DOC_ID,
+        pageId: PAGE_2_ID,
+        pageNumber: '2',
+        title: 'Page 2',
+        virtualPath: 'AnnotatedPDF/Page 2',
+        fileSizeBytes: 0,
+        lastModified: new Date().toISOString(),
+        contentHash: '',
+        status: 'Pending',
+        lastSyncTime: null,
+        oneNotePageId: null,
+        oneNotePageUrl: null,
+        retryCount: 0,
+        lastError: null,
+      },
+      testDb,
+    );
+
+    const summary = await runSyncCycle({
+      database: testDb,
+      fetchImpl: mockFetch,
+      phantomLinkPollDelaysMs: [0],
+    });
+
+    expect(summary.uploadedCount).toBe(1);
+    expect(uploadedPageTitles).toEqual(['Page 1']);
+    expect((await getPage(DOC_ID, PAGE_1_ID, testDb))?.status).toBe('Uploaded');
+    expect((await getPage(DOC_ID, PAGE_2_ID, testDb))?.status).toBe('Skipped');
+
+    // Document-level manual sync must also skip blank pages when syncUnannotatedPdfPages is false
+    const docQueueCount = await queueManualSyncItems({
+      documentIds: [DOC_ID],
+      database: testDb,
+    });
+    expect(docQueueCount).toBe(1);
+    expect((await getPage(DOC_ID, PAGE_2_ID, testDb))?.status).toBe('Skipped');
+
+    const docSyncSummary = await runSyncCycle({
+      database: testDb,
+      fetchImpl: mockFetch,
+      phantomLinkPollDelaysMs: [0],
+    });
+    expect(docSyncSummary.uploadedCount).toBe(1);
+    expect((await getPage(DOC_ID, PAGE_2_ID, testDb))?.status).toBe('Skipped');
+    expect(uploadedPageTitles).toEqual(['Page 1', 'Page 1']);
+
+    // Explicit per-page manual sync overrides and uploads the selected blank page
+    const pageQueueCount = await queueManualSyncItems({
+      pages: [{ documentId: DOC_ID, pageId: PAGE_2_ID }],
+      database: testDb,
+    });
+    expect(pageQueueCount).toBe(1);
+
+    const explicitSummary = await runSyncCycle({
+      database: testDb,
+      fetchImpl: mockFetch,
+      phantomLinkPollDelaysMs: [0],
+    });
+    expect(explicitSummary.uploadedCount).toBe(1);
+    expect((await getPage(DOC_ID, PAGE_2_ID, testDb))?.status).toBe('Uploaded');
+    expect(uploadedPageTitles).toEqual(['Page 1', 'Page 1', 'Page 2']);
+  });
+
+  it('aborts cleanly via abortSignal without throwing and leaves unfinished pages Pending', async () => {
+    const rmBytes = buildMinimalRmV3Bytes();
+    await savePage(
+      {
+        documentId: DOC_ID,
+        pageId: PAGE_1_ID,
+        pageNumber: '1',
+        title: 'Page 1',
+        virtualPath: 'AbortDoc/Page 1',
+        fileSizeBytes: rmBytes.length,
+        lastModified: new Date().toISOString(),
+        contentHash: 'hash-1',
+        status: 'Pending',
+        lastSyncTime: null,
+        oneNotePageId: null,
+        oneNotePageUrl: null,
+        retryCount: 0,
+        lastError: null,
+      },
+      testDb,
+    );
+
+    const controller = new AbortController();
+    controller.abort();
+
+    const phases: string[] = [];
+    await expect(
+      runSyncCycle({
+        database: testDb,
+        abortSignal: controller.signal,
+        onPhaseChange: async (phase) => {
+          phases.push(phase);
+        },
+      }),
+    ).rejects.toThrow(/aborted/i);
+
+    expect((await getPage(DOC_ID, PAGE_1_ID, testDb))?.status).toBe('Pending');
+    expect(phases).toEqual([]);
+  });
 });

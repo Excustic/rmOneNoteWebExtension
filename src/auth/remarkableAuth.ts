@@ -1,3 +1,4 @@
+import { fetchWithAbortAndTimeout, throwIfAborted } from '../shared/abort';
 import {
   clearRemarkableAuth,
   getRemarkableAuth,
@@ -214,11 +215,14 @@ export async function fetchWithRemarkableAuth(
   init: RequestInit = {},
   fetchImpl: typeof fetch = fetch,
 ): Promise<Response> {
+  const signal = init.signal ?? undefined;
+  throwIfAborted(signal);
+
   const token = await getValidRemarkableUserToken({ fetchImpl });
   const firstHeaders = new Headers(init.headers);
   firstHeaders.set('Authorization', `Bearer ${token}`);
 
-  const firstResponse = await fetchImpl(input, {
+  const firstResponse = await fetchWithAbortAndTimeout(fetchImpl, input, {
     ...init,
     headers: firstHeaders,
   });
@@ -227,6 +231,7 @@ export async function fetchWithRemarkableAuth(
     return firstResponse;
   }
 
+  throwIfAborted(signal);
   const refreshedToken = await getValidRemarkableUserToken({
     forceRefresh: true,
     fetchImpl,
@@ -234,7 +239,7 @@ export async function fetchWithRemarkableAuth(
   const retryHeaders = new Headers(init.headers);
   retryHeaders.set('Authorization', `Bearer ${refreshedToken}`);
 
-  return fetchImpl(input, {
+  return fetchWithAbortAndTimeout(fetchImpl, input, {
     ...init,
     headers: retryHeaders,
   });

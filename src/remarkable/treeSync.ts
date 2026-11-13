@@ -244,6 +244,28 @@ async function fetchSingleDocumentBundle(
   return { documentId, docRecord, pages };
 }
 
+function canAutoSyncPage(
+  isWhitelisted: boolean,
+  fileSizeBytes: number,
+  syncUnannotatedPdfPages: boolean,
+): boolean {
+  const isBlank = fileSizeBytes === 0;
+  return isWhitelisted && (!isBlank || syncUnannotatedPdfPages);
+}
+
+function resolveReconciledPageStatus(
+  currentStatus: PageRecord['status'],
+  canAutoSync: boolean,
+): PageRecord['status'] {
+  if (canAutoSync && currentStatus === 'Skipped') {
+    return 'Pending';
+  }
+  if (!canAutoSync && currentStatus === 'Pending') {
+    return 'Skipped';
+  }
+  return currentStatus;
+}
+
 async function reconcileWhitelistStatusesInDb(
   effectiveDocIdsLower: ReadonlySet<string>,
   syncUnannotatedPdfPages: boolean,
@@ -255,13 +277,15 @@ async function reconcileWhitelistStatusesInDb(
 
     for (const page of allPages) {
       const isWhitelisted = effectiveDocIdsLower.has(page.documentId.toLowerCase());
-      const isBlank = page.fileSizeBytes === 0;
-      const canAutoSync = isWhitelisted && (!isBlank || syncUnannotatedPdfPages);
+      const canAutoSync = canAutoSyncPage(
+        isWhitelisted,
+        page.fileSizeBytes,
+        syncUnannotatedPdfPages,
+      );
+      const nextStatus = resolveReconciledPageStatus(page.status, canAutoSync);
 
-      if (canAutoSync && page.status === 'Skipped') {
-        updates.push({ ...page, status: 'Pending' });
-      } else if (!canAutoSync && page.status === 'Pending') {
-        updates.push({ ...page, status: 'Skipped' });
+      if (nextStatus !== page.status) {
+        updates.push({ ...page, status: nextStatus });
       }
     }
 
@@ -550,9 +574,11 @@ async function executeCloudTreeSync(
         const pdfBlobHash = resolvedPage.pdfBlobHash ?? null;
         const pdfPageIndex = resolvedPage.pdfPageIndex ?? null;
 
-        const isBlankPage = resolvedPage.fileSizeBytes === 0;
-        const canAutoSync =
-          isDocWhitelisted && (!isBlankPage || prefs.syncUnannotatedPdfPages);
+        const canAutoSync = canAutoSyncPage(
+          isDocWhitelisted,
+          resolvedPage.fileSizeBytes,
+          prefs.syncUnannotatedPdfPages,
+        );
 
         if (!existingPage) {
           pagesToPut.push({
@@ -706,13 +732,12 @@ async function executeCloudTreeSync(
         }
         const expectedVirtualPath = `${doc.virtualPath}/${page.title}`;
         const isDocWhitelisted = effectiveDocIdsLower.has(page.documentId.toLowerCase());
-
-        let nextStatus = page.status;
-        if (isDocWhitelisted && nextStatus === 'Skipped') {
-          nextStatus = 'Pending';
-        } else if (!isDocWhitelisted && nextStatus === 'Pending') {
-          nextStatus = 'Skipped';
-        }
+        const canAutoSync = canAutoSyncPage(
+          isDocWhitelisted,
+          page.fileSizeBytes,
+          prefs.syncUnannotatedPdfPages,
+        );
+        const nextStatus = resolveReconciledPageStatus(page.status, canAutoSync);
 
         if (page.virtualPath !== expectedVirtualPath || page.status !== nextStatus) {
           pagesToPut.push({

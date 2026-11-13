@@ -476,5 +476,57 @@ describe('Phase 6: Microsoft Graph OneNote Client, Throttling, and Directory Cac
     const notFoundResult = await client.renamePage('page-rename-404', 'Page 5');
     expect(notFoundResult).toBe(false);
   });
+
+  it('prevents infinite @odata.nextLink pagination cycles in listPages and aborts immediately when signal aborts', async () => {
+    const controller = new AbortController();
+    let listCalls = 0;
+
+    const cyclicNextLinkUrl = `${ONENOTE_GRAPH_BASE_URL}/sections/sec-cycle/pages?$select=id,title,createdDateTime,lastModifiedDateTime,contentUrl,links&$top=100`;
+    const cyclicFetch: typeof fetch = async () => {
+      listCalls += 1;
+      return new Response(
+        JSON.stringify({
+          value: [{ id: `pg-${listCalls}`, title: `Page ${listCalls}` }],
+          '@odata.nextLink': cyclicNextLinkUrl,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    };
+
+    const cyclicClient = new OneNoteClient({ fetchImpl: cyclicFetch });
+    const listed = await cyclicClient.listPages('sec-cycle', 300);
+    expect(listCalls).toBe(1);
+    expect(listed.map((p) => p.id)).toEqual(['pg-1']);
+
+    let uploadCalls = 0;
+    const sleepCalls: number[] = [];
+    const abortingFetch: typeof fetch = async () => {
+      uploadCalls += 1;
+      controller.abort();
+      const err = new Error('The user aborted a request.');
+      err.name = 'AbortError';
+      throw err;
+    };
+
+    const abortClient = new OneNoteClient({
+      fetchImpl: abortingFetch,
+      signal: controller.signal,
+      sleepImpl: async (ms) => {
+        sleepCalls.push(ms);
+      },
+      maxUploadRetries: 5,
+    });
+
+    await expect(
+      abortClient.uploadInkMlPage({
+        sectionId: 'sec-1',
+        title: 'Page 1',
+        inkmlXml: '<inkml/>',
+        presentationHtml: '<html></html>',
+      }),
+    ).rejects.toThrow(/aborted/i);
+    expect(uploadCalls).toBe(1);
+    expect(sleepCalls).toEqual([]);
+  });
 });
 

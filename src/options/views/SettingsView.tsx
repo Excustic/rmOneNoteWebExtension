@@ -529,7 +529,10 @@ export function SettingsView({
         </form>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-2xs">
+      <section
+        data-tour="settings-privacy-section"
+        className="rounded-xl border border-slate-200 bg-white p-6 shadow-2xs"
+      >
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-slate-900">
             Browser Profile Cloud Storage &amp; Privacy

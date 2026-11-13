@@ -337,11 +337,10 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
                 1. reMarkable Cloud Pairing
               </h2>
               <span
-                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  rmPaired
+                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${rmPaired
                     ? 'bg-emerald-100 text-emerald-800'
                     : 'bg-amber-100 text-amber-800'
-                }`}
+                  }`}
               >
                 {rmPaired ? 'Paired' : 'Not Paired'}
               </span>
@@ -410,7 +409,7 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    maxLength={12}
+                    maxLength={8}
                     required
                     value={otpCode}
                     onChange={(e) => setOtpCode(e.target.value)}
@@ -433,9 +432,8 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
 
           <p
             aria-live="polite"
-            className={`mt-3 text-xs font-medium ${
-              rmFeedback?.isError ? 'text-red-700' : 'text-emerald-700'
-            }`}
+            className={`mt-3 text-xs font-medium ${rmFeedback?.isError ? 'text-red-700' : 'text-emerald-700'
+              }`}
           >
             {rmFeedback?.text ?? ''}
           </p>
@@ -451,11 +449,10 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
                 2. Microsoft OneNote Account
               </h2>
               <span
-                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  msConnected
+                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${msConnected
                     ? 'bg-emerald-100 text-emerald-800'
                     : 'bg-amber-100 text-amber-800'
-                }`}
+                  }`}
               >
                 {msConnected ? 'Connected' : 'Not Connected'}
               </span>
@@ -532,9 +529,8 @@ export function SetupView({ overview, onAuthStateChanged, onFinish }: SetupViewP
 
           <p
             aria-live="polite"
-            className={`mt-3 text-xs font-medium ${
-              msFeedback?.isError ? 'text-red-700' : 'text-emerald-700'
-            }`}
+            className={`mt-3 text-xs font-medium ${msFeedback?.isError ? 'text-red-700' : 'text-emerald-700'
+              }`}
           >
             {msFeedback?.text ?? ''}
           </p>

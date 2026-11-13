@@ -1,3 +1,5 @@
+import { createAbortError, throwIfAborted } from '../shared/abort';
+
 /**
  * Concurrency limiting, keyed mutexes, and Retry-After / exponential-backoff
  * throttling utilities for Microsoft Graph OneNote API calls.
@@ -160,9 +162,19 @@ export function computeGraphBackoffMs(
   return Math.round((baseSeconds + jitterSeconds) * 1000);
 }
 
-export function defaultSleepMs(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, Math.max(0, ms));
+export function defaultSleepMs(ms: number, signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal);
+  const delayMs = Math.max(0, ms);
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timerId);
+      reject(createAbortError());
+    };
+    const timerId = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 

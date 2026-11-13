@@ -5,6 +5,7 @@ export {
 } from './alarmScheduler';
 
 export {
+  abortActiveSyncCycle,
   cancelSyncItem,
   isSyncCycleRunning,
   queueManualSyncItems,

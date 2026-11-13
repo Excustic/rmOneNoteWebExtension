@@ -8,6 +8,7 @@
 
 import { fetchWithMicrosoftAuth } from '../auth/microsoftAuth';
 import { MAX_ONENOTE_SECTION_NAME_LENGTH } from '../db/models';
+import { isAbortError, throwIfAborted } from '../shared/abort';
 import {
   buildUpdateInkMlMultipart,
   buildUploadInkMlMultipart,
@@ -195,12 +196,11 @@ function isNetworkOrTimeoutError(err: unknown): boolean {
   if (!(err instanceof Error)) {
     return false;
   }
-  if (err instanceof OneNoteGraphError) {
+  if (err instanceof OneNoteGraphError || isAbortError(err)) {
     return false;
   }
   return (
     err.name === 'TypeError' ||
-    err.name === 'AbortError' ||
     err.name === 'TimeoutError' ||
     /network|timeout|gatewaytimeout|fetch/i.test(err.message)
   );
@@ -208,20 +208,22 @@ function isNetworkOrTimeoutError(err: unknown): boolean {
 
 export interface OneNoteClientOptions {
   readonly fetchImpl?: typeof fetch;
-  readonly sleepImpl?: (ms: number) => Promise<void>;
+  readonly sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
   readonly randomImpl?: () => number;
   readonly maxConcurrentRequests?: number;
   readonly maxUploadRetries?: number;
   readonly phantomLinkPollDelaysMs?: readonly number[];
+  readonly signal?: AbortSignal;
 }
 
 export class OneNoteClient {
   private readonly fetchImpl: typeof fetch;
-  private readonly sleepImpl: (ms: number) => Promise<void>;
+  private readonly sleepImpl: (ms: number, signal?: AbortSignal) => Promise<void>;
   private readonly randomImpl: () => number;
   private readonly semaphore: AsyncSemaphore;
   private readonly maxUploadRetries: number;
   private readonly phantomLinkPollDelaysMs: readonly number[];
+  private readonly signal?: AbortSignal;
 
   constructor(options: OneNoteClientOptions = {}) {
     this.fetchImpl = options.fetchImpl ?? fetch;
@@ -233,10 +235,28 @@ export class OneNoteClient {
     this.maxUploadRetries = Math.max(1, options.maxUploadRetries ?? 5);
     this.phantomLinkPollDelaysMs =
       options.phantomLinkPollDelaysMs ?? DEFAULT_PHANTOM_LINK_POLL_DELAYS_MS;
+    this.signal = options.signal;
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    throwIfAborted(this.signal);
+    await this.sleepImpl(ms, this.signal);
+    throwIfAborted(this.signal);
   }
 
   private async requestWithAuth(url: string, init: RequestInit = {}): Promise<Response> {
-    return this.semaphore.run(() => fetchWithMicrosoftAuth(url, init, this.fetchImpl));
+    const effectiveSignal = init.signal ?? this.signal;
+    throwIfAborted(effectiveSignal);
+    return this.semaphore.run(() =>
+      fetchWithMicrosoftAuth(
+        url,
+        {
+          ...init,
+          ...(effectiveSignal ? { signal: effectiveSignal } : {}),
+        },
+        this.fetchImpl,
+      )
+    );
   }
 
   private async throwDetailedError(response: Response): Promise<never> {
@@ -323,13 +343,20 @@ export class OneNoteClient {
       `?$select=id,title,createdDateTime,lastModifiedDateTime,contentUrl,links&$top=${pageSize}`;
 
     const allPages: OneNotePage[] = [];
+    const seenUrls = new Set<string>();
 
     while (nextUrl && allPages.length < effectiveLimit) {
+      if (seenUrls.has(nextUrl)) {
+        break;
+      }
+      seenUrls.add(nextUrl);
+
       const currentUrl: string = nextUrl;
       let fetchedThisPage = false;
 
       for (let retry = 0; retry < maxRetries; retry += 1) {
         try {
+          throwIfAborted(this.signal);
           const response = await this.requestWithAuth(currentUrl);
           if (!response.ok) {
             if (retry < maxRetries - 1 && isRetryableGraphStatus(response.status)) {
@@ -338,7 +365,7 @@ export class OneNoteClient {
                 jitterMaxSeconds: 2,
                 randomFn: this.randomImpl,
               });
-              await this.sleepImpl(delayMs);
+              await this.sleep(delayMs);
               continue;
             }
             await this.throwDetailedError(response);
@@ -355,17 +382,22 @@ export class OneNoteClient {
           }
 
           const nextLink = payload['@odata.nextLink'];
+          const trimmedNextLink =
+            typeof nextLink === 'string' ? nextLink.trim() : '';
           nextUrl =
-            typeof nextLink === 'string' &&
-            nextLink.trim().length > 0 &&
-            allPages.length < effectiveLimit
-              ? nextLink.trim()
+            trimmedNextLink.length > 0 &&
+            allPages.length < effectiveLimit &&
+            !seenUrls.has(trimmedNextLink)
+              ? trimmedNextLink
               : null;
           fetchedThisPage = true;
           break;
         } catch (err) {
+          if (this.signal?.aborted || isAbortError(err)) {
+            throw err;
+          }
           if (retry < maxRetries - 1 && isNetworkOrTimeoutError(err)) {
-            await this.sleepImpl(1000);
+            await this.sleep(1000);
             continue;
           }
           throw err;
@@ -394,6 +426,7 @@ export class OneNoteClient {
 
     for (let retry = 0; retry < maxRetries; retry += 1) {
       try {
+        throwIfAborted(this.signal);
         const response = await this.requestWithAuth(url, {
           method: 'POST',
           headers: {
@@ -409,7 +442,7 @@ export class OneNoteClient {
               jitterMaxSeconds: 3,
               randomFn: this.randomImpl,
             });
-            await this.sleepImpl(delayMs);
+            await this.sleep(delayMs);
             continue;
           }
           await this.throwDetailedError(response);
@@ -424,12 +457,15 @@ export class OneNoteClient {
         }
         return pageId;
       } catch (err) {
+        if (this.signal?.aborted || isAbortError(err)) {
+          throw err;
+        }
         if (retry < maxRetries - 1 && isNetworkOrTimeoutError(err)) {
           const delayMs = computeGraphBackoffMs(retry, {
             jitterMaxSeconds: 3,
             randomFn: this.randomImpl,
           });
-          await this.sleepImpl(delayMs);
+          await this.sleep(delayMs);
           continue;
         }
         throw err;
@@ -453,6 +489,7 @@ export class OneNoteClient {
 
     for (let retry = 0; retry < maxRetries; retry += 1) {
       try {
+        throwIfAborted(this.signal);
         const response = await this.requestWithAuth(url, {
           method: 'PATCH',
           headers: {
@@ -468,7 +505,7 @@ export class OneNoteClient {
               jitterMaxSeconds: 3,
               randomFn: this.randomImpl,
             });
-            await this.sleepImpl(delayMs);
+            await this.sleep(delayMs);
             continue;
           }
           await this.throwDetailedError(response);
@@ -476,12 +513,15 @@ export class OneNoteClient {
 
         return params.pageId;
       } catch (err) {
+        if (this.signal?.aborted || isAbortError(err)) {
+          throw err;
+        }
         if (retry < maxRetries - 1 && isNetworkOrTimeoutError(err)) {
           const delayMs = computeGraphBackoffMs(retry, {
             jitterMaxSeconds: 3,
             randomFn: this.randomImpl,
           });
-          await this.sleepImpl(delayMs);
+          await this.sleep(delayMs);
           continue;
         }
         throw err;
@@ -512,6 +552,7 @@ export class OneNoteClient {
 
     for (let retry = 0; retry < maxRetries; retry += 1) {
       try {
+        throwIfAborted(this.signal);
         const response = await this.requestWithAuth(url, {
           method: 'PATCH',
           headers: {
@@ -534,18 +575,21 @@ export class OneNoteClient {
             jitterMaxSeconds: 3,
             randomFn: this.randomImpl,
           });
-          await this.sleepImpl(delayMs);
+          await this.sleep(delayMs);
           continue;
         }
 
         return false;
       } catch (err) {
+        if (this.signal?.aborted || isAbortError(err)) {
+          throw err;
+        }
         if (retry < maxRetries - 1 && isNetworkOrTimeoutError(err)) {
           const delayMs = computeGraphBackoffMs(retry, {
             jitterMaxSeconds: 3,
             randomFn: this.randomImpl,
           });
-          await this.sleepImpl(delayMs);
+          await this.sleep(delayMs);
           continue;
         }
         return false;
@@ -589,6 +633,7 @@ export class OneNoteClient {
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const isLastAttempt = attempt === maxAttempts - 1;
       try {
+        throwIfAborted(this.signal);
         const response = await this.requestWithAuth(url);
 
         if ((response.status === 404 || isRetryableGraphStatus(response.status)) && !isLastAttempt) {
@@ -600,7 +645,7 @@ export class OneNoteClient {
           const delayMs = response.headers.get('Retry-After')
             ? retryDelayMs
             : delays[attempt];
-          await this.sleepImpl(delayMs);
+          await this.sleep(delayMs);
           continue;
         }
 
@@ -615,7 +660,7 @@ export class OneNoteClient {
         }
 
         if (!isLastAttempt) {
-          await this.sleepImpl(delays[attempt]);
+          await this.sleep(delays[attempt]);
           continue;
         }
 
@@ -623,6 +668,9 @@ export class OneNoteClient {
           'Graph API indexing timeout: Graph API returned the page, but no valid OneNote URL was attached.'
         );
       } catch (err) {
+        if (this.signal?.aborted || isAbortError(err)) {
+          throw err;
+        }
         if (isLastAttempt) {
           if (err instanceof Error && err.message.startsWith('Graph API indexing timeout:')) {
             throw err;
@@ -630,7 +678,7 @@ export class OneNoteClient {
           const msg = err instanceof Error ? err.message : String(err);
           throw new Error(`Graph API indexing timeout: ${msg}`);
         }
-        await this.sleepImpl(delays[attempt]);
+        await this.sleep(delays[attempt]);
       }
     }
 

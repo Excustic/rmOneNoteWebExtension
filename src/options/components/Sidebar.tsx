@@ -18,7 +18,7 @@ const ROUTE_ICONS: Record<OptionsRouteId, LegacyIconName> = {
 
 export function Sidebar({ activeRoute, isConfigured, onStartTour }: SidebarProps) {
   return (
-    <aside className="sidebar-region flex h-screen w-70 shrink-0 flex-col justify-between border-r border-sidebar-border bg-sidebar text-slate-200 overflow-hidden select-none">
+    <aside className="sidebar-region flex h-screen w-[clamp(200px,20vw,300px)] min-w-[200px] max-w-[300px] shrink-0 flex-col justify-between border-r border-sidebar-border bg-sidebar text-slate-200 overflow-hidden select-none">
       <div>
         <div className="flex items-center gap-3 border-b border-sidebar-border px-5 py-4">
           <img
@@ -32,7 +32,7 @@ export function Sidebar({ activeRoute, isConfigured, onStartTour }: SidebarProps
             <p className="text-base font-bold leading-tight text-white">reMarkable</p>
             <p className="mt-0.5 text-xs text-slate-400">OneNote Sync</p>
             <span className="mt-1 inline-block rounded bg-sidebar-active px-1.5 py-0.5 text-[10px] font-medium text-slate-300">
-              v1.1.0
+              v1.2.0
             </span>
           </div>
         </div>

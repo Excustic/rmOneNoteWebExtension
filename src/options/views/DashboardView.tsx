@@ -56,6 +56,7 @@ export function DashboardView({
   const [filter, setFilter] = useState<ActivityFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isAborting, setIsAborting] = useState(false);
   const [feedback, setFeedback] = useState<{ isError: boolean; text: string } | null>(null);
 
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
@@ -270,8 +271,43 @@ export function DashboardView({
     }
   }
 
+  async function handleAbortSync() {
+    setIsAborting(true);
+    setFeedback(null);
+    try {
+      const response = (await sendMessage({ type: 'ABORT_SYNC' })) as RuntimeResponse | undefined;
+      if (response?.ok) {
+        setIsSyncing(false);
+        onSyncStateChanged(response.state);
+        setFeedback({
+          isError: false,
+          text: response.detail ?? 'Sync aborted by user.',
+        });
+      } else {
+        setFeedback({
+          isError: true,
+          text: response?.error ?? 'Failed to abort sync.',
+        });
+      }
+    } catch (err) {
+      setFeedback({
+        isError: true,
+        text: err instanceof Error ? err.message : 'Failed to reach background sync worker.',
+      });
+    } finally {
+      setIsAborting(false);
+    }
+  }
+
   const isEngineBusy =
     isSyncing || (overview.phase !== 'Idle' && overview.phase !== 'Error');
+  const missingConnectionMessage = !overview.isConfigured
+    ? !overview.remarkablePaired && !overview.microsoftConnected
+      ? 'Pair your reMarkable Cloud account and connect Microsoft OneNote first before syncing.'
+      : overview.remarkablePaired && !overview.microsoftConnected
+        ? 'Connect your Microsoft OneNote account before syncing notebooks.'
+        : 'Pair your reMarkable Cloud account before syncing notebooks.'
+    : null;
 
   return (
     <div className="space-y-6">
@@ -309,18 +345,67 @@ export function DashboardView({
                 />
                 <span>{isEngineBusy ? 'Syncing...' : 'Sync Now'}</span>
               </button>
+              {isEngineBusy ? (
+                <button
+                  type="button"
+                  disabled={isAborting}
+                  onClick={() => void handleAbortSync()}
+                  className="inline-flex min-h-10 items-center rounded-md border border-rose-300 bg-rose-50 px-3.5 py-2 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  {isAborting ? 'Aborting...' : 'Abort Sync'}
+                </button>
+              ) : null}
             </>
           ) : (
-            <button
-              type="button"
-              onClick={() => onNavigate('setup')}
-              className="min-h-10 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-hover"
-            >
-              Configure Accounts
-            </button>
+            <>
+              <button
+                type="button"
+                data-tour="dashboard-sync-now-btn"
+                disabled
+                title={missingConnectionMessage ?? undefined}
+                className="inline-flex min-h-10 items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white opacity-50 cursor-not-allowed"
+              >
+                <LegacyIcon name="syncCycle" className="h-4 w-4" />
+                <span>Sync Now</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate('setup')}
+                className="min-h-10 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-hover"
+              >
+                {overview.remarkablePaired && !overview.microsoftConnected
+                  ? 'Connect OneNote'
+                  : 'Configure Accounts'}
+              </button>
+            </>
           )}
         </div>
       </header>
+
+      {missingConnectionMessage ? (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950"
+        >
+          <div>
+            <h2 className="text-sm font-semibold">
+              {overview.remarkablePaired && !overview.microsoftConnected
+                ? 'Microsoft OneNote Connection Required'
+                : !overview.remarkablePaired && overview.microsoftConnected
+                  ? 'reMarkable Cloud Pairing Required'
+                  : 'Account Connections Required'}
+            </h2>
+            <p className="mt-0.5 text-sm text-amber-900">{missingConnectionMessage}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate('setup')}
+            className="min-h-9 rounded-md bg-amber-800 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-amber-900"
+          >
+            Open Account Setup
+          </button>
+        </div>
+      ) : null}
 
       {feedback ? (
         <div
