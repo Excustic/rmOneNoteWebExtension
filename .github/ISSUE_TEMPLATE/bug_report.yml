@@ -12,8 +12,8 @@ body:
     id: extension-version
     attributes:
       label: Extension Version
-      description: What version of the extension are you running? (e.g., v1.1.0)
-      placeholder: v1.1.0
+      description: What version of the extension are you running? (e.g., v1.2.0)
+      placeholder: v1.2.0
     validations:
       required: true
 
@@ -27,31 +27,36 @@ body:
         - Microsoft Edge
         - Mozilla Firefox
         - Opera
-        - Other Chromium-based browser
+        - Brave / Vivaldi / Other Chromium-based browser
+        - Other Gecko / Firefox-based browser
     validations:
       required: true
 
   - type: input
     id: browser-version
     attributes:
-      label: Browser Version & Desktop OS
+      label: Browser Version & Operating System
       description: Please share your browser version and operating system (e.g., Chrome 131 on Windows 11).
       placeholder: Chrome 131 on Windows 11
     validations:
       required: true
 
   - type: dropdown
-    id: device
+    id: area
     attributes:
-      label: reMarkable Device
-      description: Which reMarkable tablet are you syncing with?
+      label: Affected Area
+      description: Which part of the extension is affected?
       options:
-        - reMarkable 1
-        - reMarkable 2
-        - reMarkable Paper Pro
-        - reMarkable Paper Pro Move
+        - reMarkable Cloud Auth / Pairing
+        - Microsoft OneNote Auth / Graph API
+        - File Browser / Sync15 Folder Loading
+        - Notebook / Ink / PDF Conversion
+        - Sync Engine / Auto-Sync Alarms
+        - Profile Storage / IndexedDB / Backup
+        - Options UI / Popup / Tour
+        - Other
     validations:
-      required: true
+      required: false
 
   - type: textarea
     id: description

@@ -1,43 +1,51 @@
-name: Hardware & Browser Compatibility Report
-description: Tell us if the extension works on an untested browser, OS, or reMarkable device combination!
+name: Browser & OS Compatibility Report
+description: Report whether the extension works on an untested browser, Chromium/Firefox fork, or operating system
 title: "[Compatibility]: Works on "
 labels: ["compatibility"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for helping verify browser, OS, and hardware compatibility!
+        Thank you for helping verify browser and operating system compatibility for this extension!
   - type: input
-    id: browser-os
+    id: browser
     attributes:
-      label: Browser & Desktop OS
-      placeholder: e.g., Firefox 142 on Arch Linux, Chrome 131 on macOS 15
+      label: Browser & Version
+      description: Which browser (and engine/version) did you test with?
+      placeholder: e.g., Brave 1.73, Vivaldi 7.0, Firefox 142, Zen Browser
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating System
+      placeholder: e.g., Windows 11, macOS 15, Ubuntu 24.04, Arch Linux (Wayland)
     validations:
       required: true
   - type: dropdown
-    id: device
+    id: install-source
     attributes:
-      label: reMarkable Device
+      label: Installation Source
       options:
-        - reMarkable 1
-        - reMarkable 2
-        - reMarkable Paper Pro
-        - reMarkable Paper Pro Move
-    validations:
-      required: true
-  - type: input
-    id: rm-os
-    attributes:
-      label: reMarkable OS Version
-      placeholder: e.g., v3.25.1.1
+        - Chrome Web Store
+        - Firefox Add-ons (AMO)
+        - Microsoft Edge Add-ons
+        - Opera Add-ons
+        - GitHub Release (.zip / .xpi) or Unpacked Build
     validations:
       required: true
   - type: input
     id: extension-version
     attributes:
       label: Extension Version
-      description: "Which version of the extension are you running? (e.g., v1.1.0). You can find releases [here](https://github.com/Excustic/rmOneNoteWebExtension/releases)."
-      placeholder: "v1.1.0"
+      description: "Which version of the extension are you running? (e.g., v1.2.0). You can find releases [here](https://github.com/Excustic/rmOneNoteWebExtension/releases)."
+      placeholder: "v1.2.0"
     validations:
       required: true
-
+  - type: textarea
+    id: notes
+    attributes:
+      label: Verification Notes (Optional)
+      description: Note anything specific about OAuth redirects (`identity.launchWebAuthFlow`), background alarms, `storage.sync` / Local-Only mode, or PDF/ink syncing.
+    validations:
+      required: false

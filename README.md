@@ -58,7 +58,7 @@ This extension builds on generous open-source reverse-engineering work, protocol
 
 Interested in how the `.rm` CRDT parser, Sync15 delta indexing, IndexedDB/storage packing, or Microsoft Graph OneNote pipeline works under the hood, or want to build from source? Read our **[Contributing & Architecture Guide](CONTRIBUTING.md)**.
 
-- Bug reports, feature requests, and browser/hardware compatibility reports are tracked via our [GitHub Issue Templates](.github/ISSUE_TEMPLATE/config.yml).
+- Bug reports, feature requests, and browser/OS compatibility reports are tracked via our [GitHub Issue Templates](.github/ISSUE_TEMPLATE/config.yml).
 - Release history is maintained in [CHANGELOG.md](CHANGELOG.md).
 - Data handling and zero-collection guarantees are documented in [PRIVACY.md](PRIVACY.md).
 
